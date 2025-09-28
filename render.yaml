@@ -1,0 +1,60 @@
+services:
+  # Background Worker for Order Fetching
+  - type: worker
+    name: grab-order-fetcher-worker
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: HEADLESS_MODE
+        value: true
+      - key: SCREENSHOT_ENABLED
+        value: true
+      - key: POLLING_INTERVAL_MINUTES
+        value: 2
+      - key: MAX_RETRIES
+        value: 3
+      - key: USER_AGENT_ROTATION
+        value: true
+      - key: RANDOM_DELAYS
+        value: true
+      - key: MIN_DELAY_MS
+        value: 1000
+      - key: MAX_DELAY_MS
+        value: 3000
+      - key: LOG_LEVEL
+        value: info
+      # These need to be set in Render dashboard:
+      # - GRAB_USERNAME
+      # - GRAB_PASSWORD  
+      # - MONGODB_URI
+
+  # Optional Web Service for API/Dashboard
+  - type: web
+    name: grab-order-fetcher-api
+    env: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm run server
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+      - key: LOG_LEVEL
+        value: info
+      # These need to be set in Render dashboard:
+      # - MONGODB_URI
+
+# Cron Jobs (if using Render Cron Jobs instead of worker)
+# Note: Render's free tier doesn't support cron jobs, so we use the worker approach
+# But here's the configuration if you upgrade to a paid plan:
+
+# cron:
+#   - name: fetch-orders
+#     schedule: "*/2 * * * *"  # Every 2 minutes
+#     command: node src/index.js
+#     env: node
