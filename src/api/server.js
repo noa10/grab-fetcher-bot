@@ -4,7 +4,9 @@ const express = require('express');
 const path = require('path');
 const logger = require('../utils/logger');
 const database = require('../config/database');
+const Order = require('../models/Order');
 const ordersRouter = require('./routes/orders');
+const getDashboardHTML = require('./dashboard-template');
 
 class ApiServer {
   constructor() {
@@ -56,6 +58,120 @@ class ApiServer {
       // API routes
       this.app.use('/api/orders', ordersRouter);
 
+      // Dashboard summary endpoint
+      this.app.get('/api/dashboard/summary', async (req, res) => {
+        try {
+          const today = new Date();
+          today.setHours(0, 0, 0, 0);
+          const tomorrow = new Date(today);
+          tomorrow.setDate(today.getDate() + 1);
+          const weekStart = new Date(today);
+          weekStart.setDate(today.getDate() - today.getDay());
+          const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+
+          const [
+            totalStats, todayStats, weekStats, monthStats,
+            statusBreakdown, recentOrders, recentActivity,
+            orderTypeBreakdown, topRestaurants, topDrivers,
+            hourlyDistribution, errorStats
+          ] = await Promise.all([
+            Order.aggregate([
+              { $group: { _id: null, totalOrders: { $sum: 1 }, totalRevenue: { $sum: '$pricing.total' }, avgOrderValue: { $avg: '$pricing.total' }, maxOrderValue: { $max: '$pricing.total' }, currency: { $first: '$pricing.currency' } } }
+            ]),
+            Order.aggregate([
+              { $match: { orderTimestamp: { $gte: today, $lt: tomorrow } } },
+              { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }
+            ]),
+            Order.aggregate([
+              { $match: { orderTimestamp: { $gte: weekStart } } },
+              { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }
+            ]),
+            Order.aggregate([
+              { $match: { orderTimestamp: { $gte: monthStart } } },
+              { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }
+            ]),
+            Order.aggregate([
+              { $group: { _id: '$status', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
+              { $sort: { count: -1 } }
+            ]),
+            Order.find().sort({ orderTimestamp: -1 }).limit(50).lean(),
+            Order.aggregate([
+              { $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
+              { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$orderTimestamp' } }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
+              { $sort: { _id: 1 } }
+            ]),
+            Order.aggregate([
+              { $group: { _id: '$orderDetails.orderType', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
+              { $sort: { count: -1 } }
+            ]),
+            Order.aggregate([
+              { $match: { 'orderDetails.restaurantName': { $ne: '', $exists: true } } },
+              { $group: { _id: '$orderDetails.restaurantName', orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
+              { $sort: { orders: -1 } },
+              { $limit: 5 }
+            ]),
+            Order.aggregate([
+              { $match: { driverName: { $ne: 'Pending', $ne: '', $exists: true } } },
+              { $group: { _id: '$driverName', orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
+              { $sort: { orders: -1 } },
+              { $limit: 5 }
+            ]),
+            Order.aggregate([
+              { $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
+              { $group: { _id: { $hour: '$orderTimestamp' }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
+              { $sort: { _id: 1 } }
+            ]),
+            Order.aggregate([
+              { $group: { _id: null, totalOrders: { $sum: 1 }, ordersWithErrors: { $sum: { $cond: ['$hasErrors', 1, 0] } }, processedOrders: { $sum: { $cond: ['$isProcessed', 1, 0] } } } }
+            ])
+          ]);
+
+          const lastOrder = recentOrders.length > 0 ? recentOrders[0] : null;
+
+          res.json({
+            success: true,
+            data: {
+              summary: {
+                total: { orders: totalStats[0]?.totalOrders || 0, revenue: totalStats[0]?.totalRevenue || 0, avgOrderValue: totalStats[0]?.avgOrderValue || 0, currency: totalStats[0]?.currency || 'MYR' },
+                today: { orders: todayStats[0]?.orders || 0, revenue: todayStats[0]?.revenue || 0 },
+                week: { orders: weekStats[0]?.orders || 0, revenue: weekStats[0]?.revenue || 0 },
+                month: { orders: monthStats[0]?.orders || 0, revenue: monthStats[0]?.revenue || 0 }
+              },
+              statusBreakdown: statusBreakdown.map(item => ({ status: item._id || 'unknown', count: item.count, revenue: item.revenue })),
+              orderTypeBreakdown: orderTypeBreakdown.map(item => ({ type: item._id || 'unknown', count: item.count, revenue: item.revenue })),
+              topRestaurants: topRestaurants.map(item => ({ name: item._id, orders: item.orders, revenue: item.revenue })),
+              topDrivers: topDrivers.map(item => ({ name: item._id, orders: item.orders, revenue: item.revenue })),
+              recentActivity: recentActivity.map(day => ({ date: day._id, orders: day.orders, revenue: day.revenue })),
+              hourlyDistribution: hourlyDistribution.map(item => ({ hour: item._id, orders: item.orders, revenue: item.revenue })),
+              errors: {
+                totalOrders: errorStats[0]?.totalOrders || 0,
+                ordersWithErrors: errorStats[0]?.ordersWithErrors || 0,
+                processedOrders: errorStats[0]?.processedOrders || 0
+              },
+              recentOrders: recentOrders.map(order => ({
+                _id: order._id,
+                orderNumber: order.orderNumber,
+                customerName: order.customerName,
+                driverName: order.driverName,
+                status: order.status,
+                total: order.pricing?.total || 0,
+                currency: order.pricing?.currency || 'MYR',
+                orderTimestamp: order.orderTimestamp,
+                orderType: order.orderDetails?.orderType || 'delivery',
+                restaurantName: order.orderDetails?.restaurantName || '',
+                deliveryTime: order.deliveryTime || '',
+                hasErrors: order.hasErrors || false
+              })),
+              lastFetchedAt: lastOrder?.fetchedAt || null
+            },
+            meta: { generatedAt: new Date().toISOString() }
+          });
+        } catch (error) {
+          logger.error('Error fetching dashboard summary:', error);
+          res.status(500).json({ success: false, error: 'Internal server error', message: error.message });
+        }
+      });
+
       // Health check endpoint
       this.app.get('/health', async (req, res) => {
         try {
@@ -95,7 +211,7 @@ class ApiServer {
         });
       });
 
-      // Basic dashboard HTML
+      // Premium dashboard HTML
       this.app.get('/dashboard', (req, res) => {
         res.send(this.getDashboardHTML());
       });
@@ -161,134 +277,10 @@ class ApiServer {
   }
 
   /**
-   * Get basic dashboard HTML
+   * Get premium dashboard HTML
    */
   getDashboardHTML() {
-    return `
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Grab Order Fetcher Dashboard</title>
-    <style>
-        body { font-family: Arial, sans-serif; margin: 20px; background-color: #f5f5f5; }
-        .container { max-width: 1200px; margin: 0 auto; }
-        .header { background: #00b14f; color: white; padding: 20px; border-radius: 8px; margin-bottom: 20px; }
-        .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 20px; margin-bottom: 20px; }
-        .stat-card { background: white; padding: 20px; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        .stat-value { font-size: 2em; font-weight: bold; color: #00b14f; }
-        .stat-label { color: #666; margin-top: 5px; }
-        .orders-table { background: white; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
-        table { width: 100%; border-collapse: collapse; }
-        th, td { padding: 12px; text-align: left; border-bottom: 1px solid #eee; }
-        th { background: #f8f9fa; font-weight: bold; }
-        .btn { background: #00b14f; color: white; padding: 10px 20px; border: none; border-radius: 4px; cursor: pointer; text-decoration: none; display: inline-block; margin: 5px; }
-        .btn:hover { background: #009640; }
-        .loading { text-align: center; padding: 20px; }
-    </style>
-</head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>🚗 Grab Order Fetcher Dashboard</h1>
-            <p>Monitor your automated order fetching system</p>
-        </div>
-
-        <div class="stats" id="stats">
-            <div class="loading">Loading statistics...</div>
-        </div>
-
-        <div class="orders-table">
-            <h2 style="padding: 20px; margin: 0; background: #f8f9fa;">Recent Orders</h2>
-            <div id="orders">
-                <div class="loading">Loading orders...</div>
-            </div>
-        </div>
-
-        <div style="margin-top: 20px; text-align: center;">
-            <a href="/api/orders/export/csv" class="btn">📊 Export CSV</a>
-            <a href="/api/orders/export/json" class="btn">📄 Export JSON</a>
-            <a href="/health" class="btn">🔍 Health Check</a>
-        </div>
-    </div>
-
-    <script>
-        // Load statistics
-        fetch('/api/orders/stats')
-            .then(response => response.json())
-            .then(data => {
-                document.getElementById('stats').innerHTML = \`
-                    <div class="stat-card">
-                        <div class="stat-value">\${data.totalOrders || 0}</div>
-                        <div class="stat-label">Total Orders (7 days)</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">\${data.currency || 'SGD'} \${(data.totalRevenue || 0).toFixed(2)}</div>
-                        <div class="stat-label">Total Revenue (7 days)</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">\${data.currency || 'SGD'} \${(data.avgOrderValue || 0).toFixed(2)}</div>
-                        <div class="stat-label">Average Order Value</div>
-                    </div>
-                    <div class="stat-card">
-                        <div class="stat-value">\${new Date().toLocaleDateString()}</div>
-                        <div class="stat-label">Last Updated</div>
-                    </div>
-                \`;
-            })
-            .catch(error => {
-                document.getElementById('stats').innerHTML = '<div class="stat-card">Error loading statistics</div>';
-            });
-
-        // Load recent orders
-        fetch('/api/orders/recent?limit=10')
-            .then(response => response.json())
-            .then(data => {
-                if (data.orders && data.orders.length > 0) {
-                    const tableHTML = \`
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>Order #</th>
-                                    <th>Customer</th>
-                                    <th>Driver</th>
-                                    <th>Total</th>
-                                    <th>Status</th>
-                                    <th>Time</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                \${data.orders.map(order => \`
-                                    <tr>
-                                        <td>\${order.orderNumber}</td>
-                                        <td>\${order.customerName}</td>
-                                        <td>\${order.driverName}</td>
-                                        <td>\${order.pricing.currency} \${order.pricing.total.toFixed(2)}</td>
-                                        <td>\${order.status}</td>
-                                        <td>\${new Date(order.orderTimestamp).toLocaleString()}</td>
-                                    </tr>
-                                \`).join('')}
-                            </tbody>
-                        </table>
-                    \`;
-                    document.getElementById('orders').innerHTML = tableHTML;
-                } else {
-                    document.getElementById('orders').innerHTML = '<div class="loading">No orders found</div>';
-                }
-            })
-            .catch(error => {
-                document.getElementById('orders').innerHTML = '<div class="loading">Error loading orders</div>';
-            });
-
-        // Auto-refresh every 30 seconds
-        setInterval(() => {
-            location.reload();
-        }, 30000);
-    </script>
-</body>
-</html>
-    `;
+    return getDashboardHTML();
   }
 }
 

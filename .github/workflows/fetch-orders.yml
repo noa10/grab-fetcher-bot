@@ -1,0 +1,87 @@
+name: Fetch Grab Orders
+
+on:
+  schedule:
+    # Run every 2 minutes
+    - cron: '*/2 * * * *'
+  workflow_dispatch: # Allow manual triggering
+
+jobs:
+  fetch-orders:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      
+    - name: Setup Node.js
+      uses: actions/setup-node@v4
+      with:
+        node-version: '18'
+        cache: 'npm'
+        
+    - name: Install dependencies
+      run: npm ci
+      
+    - name: Install Chrome dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          fonts-liberation \
+          libasound2 \
+          libatk-bridge2.0-0 \
+          libatk1.0-0 \
+          libatspi2.0-0 \
+          libcups2 \
+          libdbus-1-3 \
+          libdrm2 \
+          libgtk-3-0 \
+          libnspr4 \
+          libnss3 \
+          libwayland-client0 \
+          libxcomposite1 \
+          libxdamage1 \
+          libxfixes3 \
+          libxkbcommon0 \
+          libxrandr2 \
+          xvfb
+          
+    - name: Run order fetcher
+      env:
+        GRAB_USERNAME: ${{ secrets.GRAB_USERNAME }}
+        GRAB_PASSWORD: ${{ secrets.GRAB_PASSWORD }}
+        MONGODB_URI: ${{ secrets.MONGODB_URI }}
+        NODE_ENV: production
+        HEADLESS_MODE: true
+        SCREENSHOT_ENABLED: true
+        POLLING_INTERVAL_MINUTES: 2
+        MAX_RETRIES: 3
+        USER_AGENT_ROTATION: true
+        RANDOM_DELAYS: true
+        MIN_DELAY_MS: 1000
+        MAX_DELAY_MS: 3000
+        LOG_LEVEL: info
+        # GitHub Actions specific
+        GITHUB_ACTIONS: true
+        RUN_ONCE: true
+      run: |
+        # Run with virtual display for headless Chrome
+        xvfb-run -a --server-args="-screen 0 1280x1024x24" npm run fetch-once
+        
+    - name: Upload screenshots (if any)
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: screenshots-${{ github.run_number }}
+        path: screenshots/
+        retention-days: 7
+        if-no-files-found: ignore
+        
+    - name: Upload logs
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: logs-${{ github.run_number }}
+        path: logs/
+        retention-days: 3
+        if-no-files-found: ignore

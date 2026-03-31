@@ -23,20 +23,20 @@ A free, open-source automation tool designed to fetch order data from Grab Merch
 - **Web Dashboard**: Simple web interface to view orders and statistics
 - **Anti-Detection**: Basic measures to avoid detection (user-agent rotation, delays)
 - **Error Handling**: Comprehensive error handling and retry mechanisms
-- **Free Deployment**: Designed for Render's free tier and MongoDB Atlas free tier
+- **Free Deployment**: Runs on GitHub Actions schedules and Vercel serverless functions within free tiers
 
 ## 🏗️ Architecture
 
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Grab Portal   │◄───│  Puppeteer Bot   │───►│  MongoDB Atlas  │
-│  (Data Source)  │    │  (Automation)    │    │   (Storage)     │
+│   Grab Portal   │◄───│ GitHub Actions   │───►│  MongoDB Atlas  │
+│  (Data Source)  │    │ (Fetch Workflow) │    │   (Storage)     │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
                               │
                               ▼
                        ┌──────────────────┐
-                       │  Express API     │
-                       │  (Dashboard)     │
+                       │     Vercel       │
+                       │  (API + UI)      │
                        └──────────────────┘
 ```
 
@@ -93,44 +93,55 @@ npm run server
 
 Open http://localhost:3000/dashboard to view the web interface.
 
+> When you're ready to automate the fetcher, continue with the [Deployment](#-deployment) steps to configure GitHub Actions and Vercel.
+
 ## 📦 Deployment
 
-### Deploy to Render (Recommended)
+### Step 1: Configure GitHub Actions Secrets
 
-1. **Fork this repository** to your GitHub account
+1. **Fork this repository** to your GitHub account.
+2. **Add repository secrets** at `Settings → Secrets and variables → Actions`:
+   ```
+   GRAB_USERNAME=your_grab_merchant_email@example.com
+   GRAB_PASSWORD=your_grab_merchant_password
+   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/grab-orders
+   ```
+3. Keep credentials out of commits; only store them as secrets.
 
-2. **Create MongoDB Atlas database**:
-   - Sign up at [MongoDB Atlas](https://www.mongodb.com/atlas)
-   - Create a free cluster
-   - Get connection string
+### Step 2: Deploy API and Dashboard to Vercel
 
-3. **Deploy to Render**:
-   - Sign up at [Render](https://render.com)
-   - Create new "Background Worker"
-   - Connect your GitHub repository
-   - Set environment variables:
-     ```
-     GRAB_USERNAME=your_email@example.com
-     GRAB_PASSWORD=your_password
-     MONGODB_URI=your_mongodb_connection_string
-     NODE_ENV=production
-     HEADLESS_MODE=true
-     ```
-   - Deploy!
+#### Option A: Vercel CLI (recommended)
+1. Install the CLI: `npm install -g vercel`
+2. Login: `vercel login`
+3. From the project root, run `vercel` and follow the prompts.
+4. Set environment variables:
+   ```bash
+   vercel env add MONGODB_URI
+   vercel env add NODE_ENV
+   # enter "production" when prompted for NODE_ENV
+   ```
 
-4. **Optional: Deploy API Dashboard**:
-   - Create new "Web Service" on Render
-   - Use same repository
-   - Set start command: `npm run server`
-   - Set same environment variables
+#### Option B: Vercel Dashboard
+1. Go to [vercel.com](https://vercel.com) → **New Project** → import your fork.
+2. Use the **Other** framework preset and leave build/output commands empty.
+3. Under **Environment Variables**, add `MONGODB_URI` and `NODE_ENV=production`.
+4. Deploy the project.
 
-### Deploy with Docker
+### Step 3: Enable Scheduled Fetching
+
+1. Push the workflow files (under `.github/workflows/`) to your repository.
+2. GitHub Actions will execute the "Fetch Grab Orders" workflow every two minutes.
+3. Monitor runs in the **Actions** tab and inspect logs for troubleshooting.
+
+> ⏱️ Adjust the polling cadence by editing the cron schedule in `.github/workflows/fetch-orders.yml`.
+
+### Optional: Self-Host with Docker
 
 ```bash
 # Build image
 docker build -t grab-order-fetcher .
 
-# Run container
+# Run container locally
 docker run -d --name grab-bot \
   -e GRAB_USERNAME='your_email@example.com' \
   -e GRAB_PASSWORD='your_password' \
@@ -138,17 +149,68 @@ docker run -d --name grab-bot \
   grab-order-fetcher
 ```
 
-### Using Deployment Script
+## 📋 CLI Quick Reference
 
 ```bash
-# Make script executable
-chmod +x deploy.sh
+# Show statistics
+npm run orders:stats
 
-# Run deployment wizard
-./deploy.sh
+# Show today's orders
+npm run orders:today
 
-# Or deploy directly
-./deploy.sh render
+# Export to CSV
+npm run orders:export
+
+# Start API server
+npm run server
+```
+
+### API Endpoints (when server is running)
+
+```bash
+# Get all orders (paginated)
+curl "http://localhost:3000/api/orders?page=1&limit=20"
+
+# Get recent orders
+curl http://localhost:3000/api/orders/recent
+
+# Get statistics
+curl http://localhost:3000/api/orders/stats
+
+# Export CSV
+curl http://localhost:3000/api/orders/export/csv > orders.csv
+```
+
+## 📋 CLI Quick Reference
+
+```bash
+# Show statistics
+npm run orders:stats
+
+# Show today's orders
+npm run orders:today
+
+# Export to CSV
+npm run orders:export
+
+# Start API server
+npm run server
+```
+
+### API Endpoints (when server is running)
+
+```bash
+# Get all orders (paginated)
+curl "http://localhost:3000/api/orders?page=1&limit=20"
+
+# Get recent orders
+curl http://localhost:3000/api/orders/recent
+
+# Get statistics
+curl http://localhost:3000/api/orders/stats
+
+# Export CSV
+curl http://localhost:3000/api/orders/export/csv > orders.csv
 ```
 
 ## 📊 API Endpoints
@@ -218,6 +280,9 @@ CLOUDINARY_API_SECRET=your_api_secret
 
 ```
 grab-order-fetcher-bot/
+├── .github/
+│   └── workflows/
+│       └── fetch-orders.yml   # Scheduled GitHub Actions workflow
 ├── src/
 │   ├── index.js              # Main entry point
 │   ├── config/
@@ -243,7 +308,8 @@ grab-order-fetcher-bot/
 ├── package.json
 ├── .env.example
 ├── Dockerfile
-├── render.yaml
+├── render.yaml               # Legacy Render deployment config
+├── vercel.json               # Vercel project configuration
 └── README.md
 ```
 
@@ -267,27 +333,22 @@ NODE_ENV=development npm start
 
 ## 🐛 Troubleshooting
 
-### Common Issues
+### GitHub Actions Issues
 
-**1. Login Failed**
-- Check credentials in `.env` file
-- Verify Grab merchant account access
-- Check for 2FA requirements
+- **Workflow not running**: Confirm GitHub Actions are enabled for the repository.
+- **Login failures**: Re-enter `GRAB_USERNAME` and `GRAB_PASSWORD` secrets and ensure no 2FA prompts block execution.
+- **Database connection errors**: Validate the `MONGODB_URI` secret format, including query parameters.
 
-**2. No Orders Found**
-- Verify you're on the correct orders page
-- Check if there are actually new orders
-- Review browser console for errors
+### Vercel Issues
 
-**3. Database Connection Failed**
-- Verify MongoDB URI format
-- Check network connectivity
-- Ensure database user has proper permissions
+- **API endpoints returning 500**: Check Vercel function logs to confirm environment variables are present.
+- **Dashboard not loading**: Ensure all API routes were deployed and that the project is linked to the correct GitHub branch.
 
-**4. Puppeteer Errors**
-- Install Chrome dependencies: `apt-get install -y chromium-browser`
-- Check memory limits on hosting platform
-- Verify headless mode settings
+### General Issues
+
+- **No orders found**: Verify new orders exist in the Grab portal and review the GitHub Actions logs for scraping errors.
+- **Running locally**: Double-check `.env` values and ensure Chromium dependencies are installed if headless mode fails.
+- **Puppeteer errors**: Adjust `HEADLESS_MODE`, increase delays, and confirm sufficient memory when running inside Docker.
 
 ### Debug Mode
 
@@ -307,7 +368,18 @@ Check logs in the `logs/` directory:
 
 ## 📈 Monitoring
 
-### Health Checks
+### GitHub Actions Workflow
+
+- Check the **Actions** tab for the "Fetch Grab Orders" workflow runs.
+- Expand each run to inspect browser automation logs and download uploaded artifacts.
+- Configure GitHub notifications to receive alerts on failed executions.
+
+### Vercel Deployment
+
+- Review function logs and request analytics in the Vercel dashboard.
+- Trigger redeploys or rollbacks from Vercel if issues are detected.
+
+### API Health Checks
 
 ```bash
 # Check system health
@@ -319,8 +391,9 @@ curl http://localhost:3000/api/orders/stats
 
 ### Performance Metrics
 
-- Polling cycle time: < 60 seconds
-- Memory usage: < 512MB (Render free tier)
+- Polling cycle time: ~1 minute GitHub Actions job
+- GitHub Actions usage: ~720 minutes/month at 2-minute cadence (within free tier)
+- Vercel function invocations: Light API usage within Hobby plan limits
 - Storage: MongoDB Atlas free tier (512MB)
 
 ## 🔒 Security
@@ -345,7 +418,7 @@ MIT License - see [LICENSE](LICENSE) file for details.
 
 - Built with [Puppeteer](https://pptr.dev/) for browser automation
 - Uses [MongoDB Atlas](https://www.mongodb.com/atlas) for data storage
-- Deployed on [Render](https://render.com) free tier
+- Automated with [GitHub Actions](https://github.com/features/actions) and hosted on [Vercel](https://vercel.com)
 - Inspired by the need for accessible order management tools
 
 ---

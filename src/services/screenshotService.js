@@ -62,9 +62,13 @@ class ScreenshotService {
         path: filepath,
         type: 'png',
         fullPage: true,
-        quality: 80,
         ...options
       };
+      
+      // Only add quality for jpeg type
+      if (options.type === 'jpeg') {
+        screenshotOptions.quality = options.quality || 80;
+      }
 
       // Capture screenshot
       await page.screenshot(screenshotOptions);
@@ -300,6 +304,13 @@ class ScreenshotService {
    */
   getScreenshotDirectory() {
     return this.screenshotDir;
+  }
+
+  /**
+   * Alias for cleanupOldScreenshots - used by GitHubActionsRunner
+   */
+  async cleanup() {
+    return this.cleanupOldScreenshots(24);
   }
 }
 

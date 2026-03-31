@@ -19,6 +19,7 @@ class GrabOrderFetcher {
     this.extractor = null;
     this.screenshotService = new ScreenshotService();
     this.isRunning = false;
+    this.isPolling = false;
     this.pollingInterval = parseInt(process.env.POLLING_INTERVAL_MINUTES) || 2;
     this.maxRetries = parseInt(process.env.MAX_RETRIES) || 3;
     this.cronJob = null;
@@ -42,6 +43,9 @@ class GrabOrderFetcher {
       await this.bot.initBrowser();
       await this.bot.login();
       await this.bot.navigateToOrders();
+      
+      // Navigate to History tab
+      await this.bot.navigateToHistoryTab();
 
       // Initialize order extractor
       this.extractor = new OrderExtractor(this.bot.getPage());
@@ -111,9 +115,16 @@ class GrabOrderFetcher {
    * Poll for new orders
    */
   async pollForOrders() {
+    if (this.isPolling) {
+      logger.bot('Poll cycle already running, skipping...');
+      return;
+    }
+
     const startTime = Date.now();
     
     try {
+      this.isPolling = true;
+
       if (!this.isRunning) {
         return;
       }
@@ -126,6 +137,40 @@ class GrabOrderFetcher {
         logger.bot('Session invalid, re-initializing...');
         await this.reinitialize();
       }
+
+      // Navigate to Orders page and History tab
+      try {
+        await this.bot.navigateToOrders();
+        await this.bot.navigateToHistoryTab();
+      } catch (navError) {
+        logger.error('Failed to navigate to orders/history:', navError);
+        if (navError.message.includes('detached') || navError.message.includes('not valid')) {
+          await this.reinitialize();
+          try {
+            await this.bot.navigateToOrders();
+            await this.bot.navigateToHistoryTab();
+          } catch (retryError) {
+            logger.error('Navigation failed after reinitialize:', retryError);
+            return;
+          }
+        } else {
+          await this.reinitialize();
+        }
+      }
+
+      if (!this.bot.isPageValid()) {
+        logger.error('Page is not valid after navigation, reinitializing...');
+        await this.reinitialize();
+        try {
+          await this.bot.navigateToOrders();
+          await this.bot.navigateToHistoryTab();
+        } catch (retryError) {
+          logger.error('Navigation failed after reinitialize:', retryError);
+          return;
+        }
+      }
+
+      this.extractor = new OrderExtractor(this.bot.getPage());
 
       // Extract orders with retry mechanism
       const orders = await retryWithBackoff(
@@ -162,6 +207,8 @@ class GrabOrderFetcher {
       } catch (recoveryError) {
         logger.error('Failed to recover from polling error:', recoveryError);
       }
+    } finally {
+      this.isPolling = false;
     }
   }
 
@@ -175,7 +222,45 @@ class GrabOrderFetcher {
       // Check if order already exists
       const existingOrder = await Order.findByOrderNumber(orderData.orderNumber);
       if (existingOrder) {
-        logger.order(`Order ${orderData.orderNumber} already exists, skipping`);
+        logger.order(`Order ${orderData.orderNumber} already exists, updating with fresh data...`);
+        
+        // Preserve customer name if drawer shows *** (expired after 15 min)
+        if (orderData._preserveCustomerName && existingOrder.customerName && existingOrder.customerName !== 'Customer') {
+          orderData.customerName = existingOrder.customerName;
+          logger.order(`Preserved existing customer name: ${existingOrder.customerName}`);
+        }
+        
+        // Update existing order with fresh data
+        const updateFields = {
+          driverName: orderData.driverName !== 'Pending' ? orderData.driverName : existingOrder.driverName,
+          driverPhone: orderData.driverPhone || existingOrder.driverPhone,
+          driverPhotoUrl: orderData.driverPhotoUrl || existingOrder.driverPhotoUrl,
+          driverStatus: orderData.driverStatus || existingOrder.driverStatus,
+          customerPhone: orderData.customerPhone || existingOrder.customerPhone,
+          customerNote: orderData.customerNote || existingOrder.customerNote,
+          status: orderData.status !== 'pending' ? orderData.status : existingOrder.status,
+          orderTimestamp: orderData.orderTimestamp !== existingOrder.orderTimestamp ? orderData.orderTimestamp : existingOrder.orderTimestamp,
+          'orderDetails.items': orderData.orderDetails.items.length > 0 ? orderData.orderDetails.items : existingOrder.orderDetails.items,
+          'pricing.subtotal': orderData.pricing.subtotal || existingOrder.pricing.subtotal,
+          'pricing.total': orderData.pricing.total || existingOrder.pricing.total,
+          'pricing.discount': orderData.pricing.discount || existingOrder.pricing.discount,
+          lastUpdated: new Date()
+        };
+        
+        // Only update if there are actual changes
+        const hasChanges = Object.values(updateFields).some(v => 
+          v !== undefined && JSON.stringify(v) !== JSON.stringify(existingOrder.toObject())
+        );
+        
+        if (hasChanges || orderData._preserveCustomerName) {
+          await Order.updateOne(
+            { orderNumber: orderData.orderNumber },
+            { $set: updateFields }
+          );
+          logger.order(`Order ${orderData.orderNumber} updated with fresh data`);
+        } else {
+          logger.order(`Order ${orderData.orderNumber} already up to date`);
+        }
         return;
       }
 

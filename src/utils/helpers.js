@@ -193,11 +193,36 @@ const generateScreenshotFilename = (orderNumber, timestamp = new Date()) => {
 };
 
 /**
- * Clean up old files in a directory
- * @param {string} dirPath - Directory path
- * @param {number} maxAgeHours - Maximum age in hours
- * @returns {Promise<number>} Number of files deleted
+ * Parse Grab timestamp format: "31 Mar, Tue, 12:39 PM"
+ * @param {string} str - Timestamp string
+ * @returns {Date} Parsed date
  */
+const monthMap = {
+  jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
+  jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
+};
+
+function parseGrabTimestamp(str) {
+  if (!str || typeof str !== 'string') return new Date();
+  
+  const match = str.match(/(\d{1,2})\s+(\w{3}),\s+\w+,\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (match) {
+    const [, day, monthStr, hour, min, ampm] = match;
+    const month = monthMap[monthStr.toLowerCase()];
+    if (month === undefined) return new Date();
+    
+    let h = parseInt(hour);
+    const upperAmpm = ampm.toUpperCase();
+    if (upperAmpm === 'PM' && h !== 12) h += 12;
+    else if (upperAmpm === 'AM' && h === 12) h = 0;
+    
+    return new Date(new Date().getFullYear(), month, parseInt(day), h, parseInt(min));
+  }
+  
+  const fallback = new Date(str);
+  return isNaN(fallback.getTime()) ? new Date() : fallback;
+}
+
 const cleanupOldFiles = async (dirPath, maxAgeHours = 24) => {
   try {
     const files = await fs.readdir(dirPath);
@@ -235,5 +260,6 @@ module.exports = {
   retryWithBackoff,
   isWithinLastMinutes,
   generateScreenshotFilename,
-  cleanupOldFiles
+  cleanupOldFiles,
+  parseGrabTimestamp
 };

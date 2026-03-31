@@ -9,26 +9,75 @@ const orderSchema = new mongoose.Schema({
     index: true,
     trim: true
   },
-  
+
+  longOrderId: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+
+  bookingId: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+
   customerName: {
     type: String,
     required: true,
     trim: true
   },
-  
+
+  customerPhone: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+
+  customerNote: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+
   driverName: {
     type: String,
     default: 'Pending',
     trim: true
   },
-  
+
+  driverPhone: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+
+  driverStatus: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+
+  driverPhotoUrl: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+
+  deliveryTime: {
+    type: String,
+    trim: true,
+    default: ''
+  },
+
   // Order details
   orderDetails: {
     items: [{
       name: String,
       quantity: Number,
       price: Number,
-      notes: String
+      notes: String,
+      total: Number
     }],
     specialInstructions: String,
     restaurantName: String,
@@ -38,7 +87,7 @@ const orderSchema = new mongoose.Schema({
       default: 'delivery'
     }
   },
-  
+
   // Pricing information
   pricing: {
     subtotal: {
@@ -63,8 +112,11 @@ const orderSchema = new mongoose.Schema({
     },
     discount: {
       type: Number,
-      default: 0,
-      min: 0
+      default: 0
+    },
+    discountCode: {
+      type: String,
+      default: ''
     },
     total: {
       type: Number,
@@ -73,7 +125,7 @@ const orderSchema = new mongoose.Schema({
     },
     currency: {
       type: String,
-      default: 'SGD'
+      default: 'MYR'
     }
   },
   
@@ -91,7 +143,7 @@ const orderSchema = new mongoose.Schema({
   // Order status and timing
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'preparing', 'ready', 'picked_up', 'delivered', 'cancelled'],
+    enum: ['pending', 'confirmed', 'preparing', 'ready', 'picked_up', 'delivered', 'cancelled', 'completed', 'unknown'],
     default: 'pending'
   },
   
@@ -239,18 +291,30 @@ orderSchema.methods.addError = function(errorMessage) {
 orderSchema.methods.toExportFormat = function() {
   return {
     orderNumber: this.orderNumber,
+    longOrderId: this.longOrderId,
+    bookingId: this.bookingId,
     customerName: this.customerName,
+    customerPhone: this.customerPhone,
+    customerNote: this.customerNote,
     driverName: this.driverName,
+    driverPhone: this.driverPhone,
+    driverStatus: this.driverStatus,
+    driverPhotoUrl: this.driverPhotoUrl,
+    deliveryTime: this.deliveryTime,
     restaurantName: this.orderDetails.restaurantName,
     orderType: this.orderDetails.orderType,
+    items: this.orderDetails.items,
     status: this.status,
     subtotal: this.pricing.subtotal,
     deliveryFee: this.pricing.deliveryFee,
+    discount: this.pricing.discount,
+    discountCode: this.pricing.discountCode,
     total: this.pricing.total,
     currency: this.pricing.currency,
     orderTimestamp: this.orderTimestamp,
     deliveryAddress: this.deliveryInfo.address,
     estimatedDeliveryTime: this.deliveryInfo.estimatedDeliveryTime,
+    actualDeliveryTime: this.deliveryInfo.actualDeliveryTime,
     fetchedAt: this.fetchedAt
   };
 };
