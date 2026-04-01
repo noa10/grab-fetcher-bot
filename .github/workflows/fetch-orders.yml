@@ -9,6 +9,7 @@ on:
 jobs:
   fetch-orders:
     runs-on: ubuntu-latest
+    environment: Production
     
     steps:
     - name: Checkout repository
