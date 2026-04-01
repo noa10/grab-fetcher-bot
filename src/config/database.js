@@ -25,7 +25,6 @@ class Database {
         serverSelectionTimeoutMS: 10000,
         socketTimeoutMS: 45000,
         bufferCommands: true,
-        bufferTimeoutMS: 10000,
       };
 
       this.connection = await mongoose.connect(mongoUri, options);
