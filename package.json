@@ -8,8 +8,7 @@
     "dev": "node src/index.js",
     "server": "node src/api/server.js",
     "fetch-once": "node src/github-actions-runner.js",
-    "test:env": "node -e \"console.log('Environment check:', process.env.GRAB_USERNAME ? 'OK' : 'Missing GRAB_USERNAME')\"",
-    "deploy": "./deploy.sh"
+    "test:env": "node -e \"console.log('Environment check:', process.env.GRAB_USERNAME ? 'OK' : 'Missing GRAB_USERNAME')\""
   },
   "keywords": [
     "grab",

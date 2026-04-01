@@ -110,22 +110,14 @@ Open http://localhost:3000/dashboard to view the web interface.
 
 ### Step 2: Deploy API and Dashboard to Vercel
 
-#### Option A: Vercel CLI (recommended)
-1. Install the CLI: `npm install -g vercel`
-2. Login: `vercel login`
-3. From the project root, run `vercel` and follow the prompts.
-4. Set environment variables:
-   ```bash
-   vercel env add MONGODB_URI
-   vercel env add NODE_ENV
-   # enter "production" when prompted for NODE_ENV
-   ```
-
-#### Option B: Vercel Dashboard
-1. Go to [vercel.com](https://vercel.com) → **New Project** → import your fork.
+1. Go to [vercel.com](https://vercel.com) → **New Project** → import your GitHub repository.
 2. Use the **Other** framework preset and leave build/output commands empty.
-3. Under **Environment Variables**, add `MONGODB_URI` and `NODE_ENV=production`.
-4. Deploy the project.
+3. Under **Environment Variables**, add:
+   - `MONGODB_URI` — same MongoDB connection string used in GitHub Actions
+   - `NODE_ENV` — set to `production`
+4. Deploy the project. Vercel will automatically redeploy on every push to the connected branch.
+
+> The dashboard is served by Vercel serverless functions that read from the same MongoDB Atlas instance where GitHub Actions writes fetched orders.
 
 ### Step 3: Enable Scheduled Fetching
 
@@ -135,18 +127,14 @@ Open http://localhost:3000/dashboard to view the web interface.
 
 > ⏱️ Adjust the polling cadence by editing the cron schedule in `.github/workflows/fetch-orders.yml`.
 
-### Optional: Self-Host with Docker
+### Optional: Run Locally
 
 ```bash
-# Build image
-docker build -t grab-order-fetcher .
+# Start the order fetcher
+npm start
 
-# Run container locally
-docker run -d --name grab-bot \
-  -e GRAB_USERNAME='your_email@example.com' \
-  -e GRAB_PASSWORD='your_password' \
-  -e MONGODB_URI='your_mongodb_uri' \
-  grab-order-fetcher
+# Start the API server (in another terminal)
+npm run server
 ```
 
 ## 📋 CLI Quick Reference
@@ -307,8 +295,6 @@ grab-order-fetcher-bot/
 ├── logs/                     # Log files
 ├── package.json
 ├── .env.example
-├── Dockerfile
-├── render.yaml               # Legacy Render deployment config
 ├── vercel.json               # Vercel project configuration
 └── README.md
 ```
