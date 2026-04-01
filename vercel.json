@@ -1,17 +1,13 @@
 {
   "rewrites": [
-    { "source": "/api/dashboard/summary", "destination": "/api/dashboard/summary" },
-    { "source": "/api/orders/stats", "destination": "/api/orders/stats" },
-    { "source": "/api/orders/recent", "destination": "/api/orders/recent" },
-    { "source": "/api/orders/export", "destination": "/api/orders/export" },
-    { "source": "/api/orders/:path*", "destination": "/api/orders" },
-    { "source": "/health", "destination": "/api/health" },
-    { "source": "/dashboard", "destination": "/api/dashboard" },
-    { "source": "/", "destination": "/api/index" }
+    { "source": "/", "destination": "/api/dashboard" },
+    { "source": "/health", "destination": "/api/health" }
   ],
   "functions": {
     "api/**/*.js": {
       "maxDuration": 30
     }
+  }
+}
   }
 }
