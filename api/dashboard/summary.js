@@ -42,16 +42,25 @@ module.exports = async (req, res) => {
       totalStats = todayStats = weekStats = monthStats = [];
     }
 
-    let statusBreakdown, recentOrders, recentActivity;
+    let statusBreakdown, recentActivity, recentOrderCount;
     try {
-      [statusBreakdown, recentOrders, recentActivity] = await Promise.all([
+      [statusBreakdown, recentActivity, recentOrderCount] = await Promise.all([
         Order.aggregate([{ $group: { _id: '$status', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }, { $sort: { count: -1 } }]),
-        Order.find().sort({ orderTimestamp: -1 }).limit(50).lean(),
-        Order.aggregate([{ $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }, { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$orderTimestamp' } }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }, { $sort: { _id: 1 } }])
+        Order.aggregate([{ $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }, { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$orderTimestamp' } }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }, { $sort: { _id: 1 } }]),
+        Order.countDocuments()
       ]);
     } catch (err) {
       console.error('Breakdown batch failed:', err.message);
-      statusBreakdown = []; recentOrders = []; recentActivity = [];
+      statusBreakdown = []; recentActivity = []; recentOrderCount = 0;
+    }
+
+    // Get last fetched timestamp without loading full documents
+    let lastFetchedAt = null;
+    try {
+      const lastOrder = await Order.findOne().sort({ fetchedAt: -1 }).select('fetchedAt').lean();
+      lastFetchedAt = lastOrder?.fetchedAt || null;
+    } catch (err) {
+      console.error('Last order query failed:', err.message);
     }
 
     let orderTypeBreakdown, topRestaurants, topDrivers;
@@ -77,8 +86,6 @@ module.exports = async (req, res) => {
       hourlyDistribution = []; errorStats = [];
     }
 
-    const lastOrder = recentOrders.length > 0 ? recentOrders[0] : null;
-
     const response = {
       success: true,
       data: {
@@ -99,21 +106,8 @@ module.exports = async (req, res) => {
           ordersWithErrors: errorStats[0]?.ordersWithErrors || 0,
           processedOrders: errorStats[0]?.processedOrders || 0
         },
-        recentOrders: recentOrders.map(order => ({
-          _id: order._id,
-          orderNumber: order.orderNumber,
-          customerName: order.customerName,
-          driverName: order.driverName,
-          status: order.status,
-          total: order.pricing?.total || 0,
-          currency: order.pricing?.currency || 'MYR',
-          orderTimestamp: order.orderTimestamp,
-          orderType: order.orderDetails?.orderType || 'delivery',
-          restaurantName: order.orderDetails?.restaurantName || '',
-          deliveryTime: order.deliveryTime || '',
-          hasErrors: order.hasErrors || false
-        })),
-        lastFetchedAt: lastOrder?.fetchedAt || null
+        totalOrders: recentOrderCount || 0,
+        lastFetchedAt: lastFetchedAt
       },
       meta: { generatedAt: new Date().toISOString() }
     };
