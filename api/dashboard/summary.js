@@ -28,67 +28,54 @@ module.exports = async (req, res) => {
     weekStart.setDate(today.getDate() - today.getDay());
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    // Batch queries to avoid overwhelming the connection pool on serverless
-    const [totalStats, todayStats, weekStats, monthStats] = await Promise.all([
-      Order.aggregate([
-        { $group: { _id: null, totalOrders: { $sum: 1 }, totalRevenue: { $sum: '$pricing.total' }, avgOrderValue: { $avg: '$pricing.total' }, maxOrderValue: { $max: '$pricing.total' }, currency: { $first: '$pricing.currency' } } }
-      ]),
-      Order.aggregate([
-        { $match: { orderTimestamp: { $gte: today, $lt: tomorrow } } },
-        { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }
-      ]),
-      Order.aggregate([
-        { $match: { orderTimestamp: { $gte: weekStart } } },
-        { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }
-      ]),
-      Order.aggregate([
-        { $match: { orderTimestamp: { $gte: monthStart } } },
-        { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }
-      ])
-    ]);
+    // Batch queries sequentially to avoid overwhelming serverless connections
+    let totalStats, todayStats, weekStats, monthStats;
+    try {
+      [totalStats, todayStats, weekStats, monthStats] = await Promise.all([
+        Order.aggregate([{ $group: { _id: null, totalOrders: { $sum: 1 }, totalRevenue: { $sum: '$pricing.total' }, avgOrderValue: { $avg: '$pricing.total' }, maxOrderValue: { $max: '$pricing.total' }, currency: { $first: '$pricing.currency' } } }]),
+        Order.aggregate([{ $match: { orderTimestamp: { $gte: today, $lt: tomorrow } } }, { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }]),
+        Order.aggregate([{ $match: { orderTimestamp: { $gte: weekStart } } }, { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }]),
+        Order.aggregate([{ $match: { orderTimestamp: { $gte: monthStart } } }, { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }])
+      ]);
+    } catch (err) {
+      console.error('Stats batch failed:', err.message);
+      totalStats = todayStats = weekStats = monthStats = [];
+    }
 
-    const [statusBreakdown, recentOrders, recentActivity] = await Promise.all([
-      Order.aggregate([
-        { $group: { _id: '$status', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
-        { $sort: { count: -1 } }
-      ]),
-      Order.find().sort({ orderTimestamp: -1 }).limit(50).lean(),
-      Order.aggregate([
-        { $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$orderTimestamp' } }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
-        { $sort: { _id: 1 } }
-      ])
-    ]);
+    let statusBreakdown, recentOrders, recentActivity;
+    try {
+      [statusBreakdown, recentOrders, recentActivity] = await Promise.all([
+        Order.aggregate([{ $group: { _id: '$status', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }, { $sort: { count: -1 } }]),
+        Order.find().sort({ orderTimestamp: -1 }).limit(50).lean(),
+        Order.aggregate([{ $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }, { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$orderTimestamp' } }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }, { $sort: { _id: 1 } }])
+      ]);
+    } catch (err) {
+      console.error('Breakdown batch failed:', err.message);
+      statusBreakdown = []; recentOrders = []; recentActivity = [];
+    }
 
-    const [orderTypeBreakdown, topRestaurants, topDrivers] = await Promise.all([
-      Order.aggregate([
-        { $group: { _id: '$orderDetails.orderType', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
-        { $sort: { count: -1 } }
-      ]),
-      Order.aggregate([
-        { $match: { 'orderDetails.restaurantName': { $ne: '', $exists: true } } },
-        { $group: { _id: '$orderDetails.restaurantName', orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
-        { $sort: { orders: -1 } },
-        { $limit: 5 }
-      ]),
-      Order.aggregate([
-        { $match: { driverName: { $ne: 'Pending', $ne: '', $exists: true } } },
-        { $group: { _id: '$driverName', orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
-        { $sort: { orders: -1 } },
-        { $limit: 5 }
-      ])
-    ]);
+    let orderTypeBreakdown, topRestaurants, topDrivers;
+    try {
+      [orderTypeBreakdown, topRestaurants, topDrivers] = await Promise.all([
+        Order.aggregate([{ $group: { _id: '$orderDetails.orderType', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }, { $sort: { count: -1 } }]),
+        Order.aggregate([{ $match: { 'orderDetails.restaurantName': { $ne: '', $exists: true } } }, { $group: { _id: '$orderDetails.restaurantName', orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }, { $sort: { orders: -1 } }, { $limit: 5 }]),
+        Order.aggregate([{ $match: { driverName: { $ne: 'Pending', $ne: '', $exists: true } } }, { $group: { _id: '$driverName', orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }, { $sort: { orders: -1 } }, { $limit: 5 }])
+      ]);
+    } catch (err) {
+      console.error('Type/Top batch failed:', err.message);
+      orderTypeBreakdown = []; topRestaurants = []; topDrivers = [];
+    }
 
-    const [hourlyDistribution, errorStats] = await Promise.all([
-      Order.aggregate([
-        { $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
-        { $group: { _id: { $hour: '$orderTimestamp' }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
-        { $sort: { _id: 1 } }
-      ]),
-      Order.aggregate([
-        { $group: { _id: null, totalOrders: { $sum: 1 }, ordersWithErrors: { $sum: { $cond: ['$hasErrors', 1, 0] } }, processedOrders: { $sum: { $cond: ['$isProcessed', 1, 0] } } } }
-      ])
-    ]);
+    let hourlyDistribution, errorStats;
+    try {
+      [hourlyDistribution, errorStats] = await Promise.all([
+        Order.aggregate([{ $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } }, { $group: { _id: { $hour: '$orderTimestamp' }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }, { $sort: { _id: 1 } }]),
+        Order.aggregate([{ $group: { _id: null, totalOrders: { $sum: 1 }, ordersWithErrors: { $sum: { $cond: ['$hasErrors', 1, 0] } }, processedOrders: { $sum: { $cond: ['$isProcessed', 1, 0] } } } }])
+      ]);
+    } catch (err) {
+      console.error('Hourly/Error batch failed:', err.message);
+      hourlyDistribution = []; errorStats = [];
+    }
 
     const lastOrder = recentOrders.length > 0 ? recentOrders[0] : null;
 
