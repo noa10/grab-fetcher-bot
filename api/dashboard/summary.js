@@ -28,20 +28,8 @@ module.exports = async (req, res) => {
     weekStart.setDate(today.getDate() - today.getDay());
     const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
 
-    const [
-      totalStats,
-      todayStats,
-      weekStats,
-      monthStats,
-      statusBreakdown,
-      recentOrders,
-      recentActivity,
-      orderTypeBreakdown,
-      topRestaurants,
-      topDrivers,
-      hourlyDistribution,
-      errorStats
-    ] = await Promise.all([
+    // Batch queries to avoid overwhelming the connection pool on serverless
+    const [totalStats, todayStats, weekStats, monthStats] = await Promise.all([
       Order.aggregate([
         { $group: { _id: null, totalOrders: { $sum: 1 }, totalRevenue: { $sum: '$pricing.total' }, avgOrderValue: { $avg: '$pricing.total' }, maxOrderValue: { $max: '$pricing.total' }, currency: { $first: '$pricing.currency' } } }
       ]),
@@ -56,7 +44,10 @@ module.exports = async (req, res) => {
       Order.aggregate([
         { $match: { orderTimestamp: { $gte: monthStart } } },
         { $group: { _id: null, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } }
-      ]),
+      ])
+    ]);
+
+    const [statusBreakdown, recentOrders, recentActivity] = await Promise.all([
       Order.aggregate([
         { $group: { _id: '$status', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { count: -1 } }
@@ -66,7 +57,10 @@ module.exports = async (req, res) => {
         { $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
         { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$orderTimestamp' } }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { _id: 1 } }
-      ]),
+      ])
+    ]);
+
+    const [orderTypeBreakdown, topRestaurants, topDrivers] = await Promise.all([
       Order.aggregate([
         { $group: { _id: '$orderDetails.orderType', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { count: -1 } }
@@ -82,7 +76,10 @@ module.exports = async (req, res) => {
         { $group: { _id: '$driverName', orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { orders: -1 } },
         { $limit: 5 }
-      ]),
+      ])
+    ]);
+
+    const [hourlyDistribution, errorStats] = await Promise.all([
       Order.aggregate([
         { $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
         { $group: { _id: { $hour: '$orderTimestamp' }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
