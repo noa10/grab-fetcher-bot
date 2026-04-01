@@ -29,6 +29,7 @@ function getDashboardHTML() {
             --radius-md: 12px;
             --radius-lg: 16px;
             --sidebar-width: 260px;
+            --sidebar-collapsed: 64px;
             --header-height: 64px;
             --status-pending: #f59e0b;
             --status-confirmed: #3b82f6;
@@ -67,10 +68,9 @@ function getDashboardHTML() {
         }
 
         .sidebar {
-            position: fixed;
-            left: 0;
+            position: sticky;
             top: 0;
-            bottom: 0;
+            height: 100vh;
             width: var(--sidebar-width);
             background: var(--bg-secondary);
             border-right: 1px solid var(--border-color);
@@ -78,24 +78,34 @@ function getDashboardHTML() {
             z-index: 100;
             display: flex;
             flex-direction: column;
-            transition: transform 0.3s ease;
+            transition: width 0.3s ease;
+            flex-shrink: 0;
+            overflow: hidden;
         }
+
+        .sidebar.collapsed { width: var(--sidebar-collapsed); }
 
         .sidebar-header {
             padding: 0 20px 24px;
             border-bottom: 1px solid var(--border-color);
             margin-bottom: 16px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
         }
 
         .sidebar-logo {
             display: flex;
             align-items: center;
             gap: 12px;
+            flex: 1;
+            overflow: hidden;
         }
 
         .sidebar-logo-icon {
             width: 40px;
             height: 40px;
+            min-width: 40px;
             background: linear-gradient(135deg, var(--grab-green), var(--grab-green-light));
             border-radius: 10px;
             display: flex;
@@ -103,6 +113,9 @@ function getDashboardHTML() {
             justify-content: center;
             font-size: 20px;
         }
+
+        .sidebar-logo-text { white-space: nowrap; transition: opacity 0.2s ease; }
+        .sidebar.collapsed .sidebar-logo-text { opacity: 0; pointer-events: none; }
 
         .sidebar-logo-text h1 {
             font-size: 16px;
@@ -117,7 +130,25 @@ function getDashboardHTML() {
             font-weight: 500;
         }
 
-        .sidebar-nav { flex: 1; padding: 8px 12px; }
+        .sidebar-collapse-btn {
+            background: none;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            width: 28px;
+            height: 28px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            color: var(--text-muted);
+            transition: all 0.15s ease;
+            flex-shrink: 0;
+        }
+        .sidebar-collapse-btn:hover { background: var(--bg-tertiary); color: var(--text-primary); }
+        .sidebar.collapsed .sidebar-collapse-btn svg { transform: rotate(180deg); }
+        .sidebar-collapse-btn svg { transition: transform 0.3s ease; }
+
+        .sidebar-nav { flex: 1; padding: 8px 12px; overflow-y: auto; }
 
         .nav-item {
             display: flex;
@@ -132,11 +163,15 @@ function getDashboardHTML() {
             cursor: pointer;
             transition: all 0.15s ease;
             margin-bottom: 4px;
+            white-space: nowrap;
         }
 
         .nav-item:hover { background: var(--bg-tertiary); color: var(--text-primary); }
         .nav-item.active { background: var(--grab-green); color: white; }
         .nav-item svg { width: 20px; height: 20px; flex-shrink: 0; }
+        .nav-item .nav-text { transition: opacity 0.2s ease; }
+        .sidebar.collapsed .nav-item .nav-text { opacity: 0; pointer-events: none; }
+        .sidebar.collapsed .nav-item { justify-content: center; padding: 10px; }
 
         .sidebar-footer {
             padding: 16px 20px;
@@ -144,11 +179,19 @@ function getDashboardHTML() {
             font-size: 12px;
             color: var(--text-muted);
             text-align: center;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .app-layout {
+            display: flex;
+            min-height: 100vh;
         }
 
         .main-content {
-            margin-left: var(--sidebar-width);
-            min-height: 100vh;
+            flex: 1;
+            min-width: 0;
         }
 
         .header {
@@ -176,15 +219,8 @@ function getDashboardHTML() {
             padding: 8px;
         }
 
-        .header-title h2 {
-            font-size: 18px;
-            font-weight: 600;
-        }
-
-        .header-title p {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
+        .header-title h2 { font-size: 18px; font-weight: 600; }
+        .header-title p { font-size: 12px; color: var(--text-muted); }
 
         .header-right { display: flex; align-items: center; gap: 12px; }
 
@@ -201,7 +237,6 @@ function getDashboardHTML() {
             color: var(--text-secondary);
             transition: all 0.15s ease;
         }
-
         .theme-toggle:hover { background: var(--border-color); }
 
         .refresh-btn {
@@ -218,13 +253,47 @@ function getDashboardHTML() {
             font-weight: 500;
             transition: all 0.15s ease;
         }
-
         .refresh-btn:hover { background: var(--border-color); }
         .refresh-btn.loading svg { animation: spin 1s linear infinite; }
+
+        .logout-btn {
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 8px 12px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            cursor: pointer;
+            color: var(--text-secondary);
+            font-size: 13px;
+            font-weight: 500;
+            transition: all 0.15s ease;
+        }
+        .logout-btn:hover { background: rgba(239,68,68,0.1); color: var(--status-cancelled); border-color: var(--status-cancelled); }
 
         @keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
 
         .content-area { padding: 24px; }
+
+        .view { display: none; }
+        .view.active { display: block; }
+
+        .date-display {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: var(--bg-tertiary);
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            padding: 6px 12px;
+            font-size: 13px;
+            color: var(--text-secondary);
+            margin-bottom: 24px;
+        }
+        .date-display svg { width: 16px; height: 16px; color: var(--grab-green); }
+        .date-display .date-text { font-weight: 600; color: var(--text-primary); }
+        .date-display .timezone { font-size: 11px; color: var(--text-muted); }
 
         .filter-bar {
             background: var(--bg-card);
@@ -271,11 +340,7 @@ function getDashboardHTML() {
             box-shadow: 0 0 0 3px rgba(0,177,79,0.1);
         }
 
-        .filter-actions {
-            display: flex;
-            gap: 8px;
-            align-items: flex-end;
-        }
+        .filter-actions { display: flex; gap: 8px; align-items: flex-end; }
 
         .btn {
             padding: 8px 16px;
@@ -354,11 +419,7 @@ function getDashboardHTML() {
             margin-bottom: 4px;
         }
 
-        .stat-change {
-            font-size: 12px;
-            color: var(--text-muted);
-        }
-
+        .stat-change { font-size: 12px; color: var(--text-muted); }
         .stat-change.positive { color: var(--grab-green); }
         .stat-change.negative { color: var(--status-cancelled); }
 
@@ -383,11 +444,7 @@ function getDashboardHTML() {
             margin-bottom: 16px;
         }
 
-        .chart-title {
-            font-size: 14px;
-            font-weight: 600;
-        }
-
+        .chart-title { font-size: 14px; font-weight: 600; }
         .chart-body { min-height: 200px; }
 
         .bar-chart {
@@ -469,17 +526,18 @@ function getDashboardHTML() {
             justify-content: space-between;
             padding: 16px 20px;
             border-bottom: 1px solid var(--border-color);
+            flex-wrap: wrap;
+            gap: 12px;
         }
 
         .table-title { font-size: 16px; font-weight: 600; }
         .table-count { font-size: 13px; color: var(--text-muted); }
 
+        .table-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+
         .table-wrapper { overflow-x: auto; }
 
-        table {
-            width: 100%;
-            border-collapse: collapse;
-        }
+        table { width: 100%; border-collapse: collapse; }
 
         th {
             padding: 12px 16px;
@@ -595,7 +653,6 @@ function getDashboardHTML() {
         }
 
         .pagination-info { font-size: 13px; color: var(--text-muted); }
-
         .pagination-controls { display: flex; gap: 8px; }
 
         .page-btn {
@@ -657,13 +714,9 @@ function getDashboardHTML() {
         }
 
         .modal-close:hover { background: var(--bg-tertiary); }
-
         .modal-body { padding: 24px; }
 
-        .detail-section {
-            margin-bottom: 24px;
-        }
-
+        .detail-section { margin-bottom: 24px; }
         .detail-section:last-child { margin-bottom: 0; }
 
         .detail-title {
@@ -743,12 +796,23 @@ function getDashboardHTML() {
             z-index: 99;
         }
 
+        .show-all-btn {
+            font-size: 12px;
+            color: var(--grab-green);
+            background: none;
+            border: none;
+            cursor: pointer;
+            padding: 4px 8px;
+            font-weight: 500;
+        }
+        .show-all-btn:hover { text-decoration: underline; }
+
         @media (max-width: 1024px) {
             .charts-grid { grid-template-columns: 1fr; }
         }
 
         @media (max-width: 768px) {
-            .sidebar { transform: translateX(-100%); }
+            .sidebar { position: fixed; transform: translateX(-100%); }
             .sidebar.open { transform: translateX(0); }
             .sidebar-overlay.show { display: block; }
             .main-content { margin-left: 0; }
@@ -766,225 +830,252 @@ function getDashboardHTML() {
     </style>
 </head>
 <body>
-    <div class="sidebar-overlay" id="sidebarOverlay"></div>
-    
-    <aside class="sidebar" id="sidebar">
-        <div class="sidebar-header">
-            <div class="sidebar-logo">
-                <div class="sidebar-logo-icon">🚗</div>
-                <div class="sidebar-logo-text">
-                    <h1>Grab Orders</h1>
-                    <span>Fetcher Dashboard</span>
+    <div class="app-layout">
+        <div class="sidebar-overlay" id="sidebarOverlay"></div>
+        
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="sidebar-logo">
+                    <div class="sidebar-logo-icon">🚗</div>
+                    <div class="sidebar-logo-text">
+                        <h1>Grab Orders</h1>
+                        <span>Fetcher Dashboard</span>
+                    </div>
                 </div>
-            </div>
-        </div>
-        <nav class="sidebar-nav">
-            <a class="nav-item active" data-view="dashboard">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-                Dashboard
-            </a>
-            <a class="nav-item" data-view="orders">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
-                All Orders
-            </a>
-            <a class="nav-item" href="/api/orders/export/csv">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-                Export CSV
-            </a>
-            <a class="nav-item" href="/api/orders/export/json">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
-                Export JSON
-            </a>
-            <a class="nav-item" href="/health">
-                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
-                Health Check
-            </a>
-        </nav>
-        <div class="sidebar-footer">
-            <span id="lastUpdate">Loading...</span>
-        </div>
-    </aside>
-
-    <main class="main-content">
-        <header class="header">
-            <div class="header-left">
-                <button class="mobile-menu-btn" id="mobileMenuBtn">
-                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
-                </button>
-                <div class="header-title">
-                    <h2>Dashboard</h2>
-                    <p id="headerSubtitle">Overview of your order activity</p>
-                </div>
-            </div>
-            <div class="header-right">
-                <button class="theme-toggle" id="themeToggle" title="Toggle theme">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="themeIcon"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
-                </button>
-                <button class="refresh-btn" id="refreshBtn">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-                    Refresh
+                <button class="sidebar-collapse-btn" id="sidebarCollapseBtn" title="Toggle sidebar">
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
             </div>
-        </header>
+            <nav class="sidebar-nav">
+                <a class="nav-item active" data-view="dashboard">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+                    <span class="nav-text">Dashboard</span>
+                </a>
+                <a class="nav-item" data-view="orders">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
+                    <span class="nav-text">All Orders</span>
+                </a>
+                <a class="nav-item" href="/health">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+                    <span class="nav-text">Health Check</span>
+                </a>
+            </nav>
+            <div class="sidebar-footer">
+                <span id="lastUpdate">Loading...</span>
+            </div>
+        </aside>
 
-        <div class="content-area">
-            <div class="filter-bar" id="filterBar">
-                <div class="filter-group">
-                    <label class="filter-label">Search</label>
-                    <input type="text" class="filter-input" id="searchInput" placeholder="Order #, customer, driver...">
+        <main class="main-content">
+            <header class="header">
+                <div class="header-left">
+                    <button class="mobile-menu-btn" id="mobileMenuBtn">
+                        <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+                    </button>
+                    <div class="header-title">
+                        <h2 id="headerTitle">Dashboard</h2>
+                        <p id="headerSubtitle">Overview of your order activity</p>
+                    </div>
                 </div>
-                <div class="filter-group">
-                    <label class="filter-label">Status</label>
-                    <select class="filter-select" id="statusFilter">
-                        <option value="">All Statuses</option>
-                    </select>
+                <div class="header-right">
+                    <button class="theme-toggle" id="themeToggle" title="Toggle theme">
+                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" id="themeIcon"><path d="M21 12.79A9 9 0 1111.21 3 7 7 0 0021 12.79z"/></svg>
+                    </button>
+                    <button class="refresh-btn" id="refreshBtn">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
+                        Refresh
+                    </button>
+                    <button class="logout-btn" id="logoutBtn" title="Logout">
+                        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+                        Logout
+                    </button>
                 </div>
-                <div class="filter-group">
-                    <label class="filter-label">Order Type</label>
-                    <select class="filter-select" id="orderTypeFilter">
-                        <option value="">All Types</option>
-                        <option value="delivery">Delivery</option>
-                        <option value="pickup">Pickup</option>
-                        <option value="dine-in">Dine-in</option>
-                    </select>
+            </header>
+
+            <div class="content-area">
+                <div class="view active" id="dashboardView">
+                    <div class="date-display">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <span>Data for: </span>
+                        <span class="date-text" id="dashboardDate"></span>
+                        <span class="timezone">(MYT GMT+8)</span>
+                    </div>
+
+                    <div class="stats-grid" id="statsGrid">
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">Total Orders</span>
+                                <div class="stat-icon green">📦</div>
+                            </div>
+                            <div class="stat-value" id="statTotalOrders">-</div>
+                            <div class="stat-change" id="statTotalOrdersChange">All time</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">Today's Orders</span>
+                                <div class="stat-icon blue">📅</div>
+                            </div>
+                            <div class="stat-value" id="statTodayOrders">-</div>
+                            <div class="stat-change" id="statTodayOrdersChange">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">Total Revenue</span>
+                                <div class="stat-icon purple">💰</div>
+                            </div>
+                            <div class="stat-value" id="statTotalRevenue">-</div>
+                            <div class="stat-change" id="statTotalRevenueChange">All time</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">Today's Revenue</span>
+                                <div class="stat-icon orange">💵</div>
+                            </div>
+                            <div class="stat-value" id="statTodayRevenue">-</div>
+                            <div class="stat-change" id="statTodayRevenueChange">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">Avg Order Value</span>
+                                <div class="stat-icon cyan">📊</div>
+                            </div>
+                            <div class="stat-value" id="statAvgOrder">-</div>
+                            <div class="stat-change">Per order average</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">This Week</span>
+                                <div class="stat-icon green">📈</div>
+                            </div>
+                            <div class="stat-value" id="statWeekOrders">-</div>
+                            <div class="stat-change" id="statWeekRevenue">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">This Month</span>
+                                <div class="stat-icon blue">🗓️</div>
+                            </div>
+                            <div class="stat-value" id="statMonthOrders">-</div>
+                            <div class="stat-change" id="statMonthRevenue">-</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-header">
+                                <span class="stat-label">Error Rate</span>
+                                <div class="stat-icon red">⚠️</div>
+                            </div>
+                            <div class="stat-value" id="statErrorRate">-</div>
+                            <div class="stat-change" id="statErrorCount">-</div>
+                        </div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3 class="chart-title">Orders (Last 7 Days)</h3>
+                            </div>
+                            <div class="chart-body">
+                                <div class="bar-chart" id="activityChart"></div>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <h3 class="chart-title">Status Breakdown</h3>
+                            </div>
+                            <div class="chart-body">
+                                <div class="status-list" id="statusList"></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="filter-group">
-                    <label class="filter-label">From Date</label>
-                    <input type="date" class="filter-input" id="dateFrom">
-                </div>
-                <div class="filter-group">
-                    <label class="filter-label">To Date</label>
-                    <input type="date" class="filter-input" id="dateTo">
-                </div>
-                <div class="filter-actions">
-                    <button class="btn btn-primary" id="applyFilters">Apply</button>
-                    <button class="btn btn-secondary" id="clearFilters">Clear</button>
+
+                <div class="view" id="ordersView">
+                    <div class="date-display">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <span>Showing orders for: </span>
+                        <span class="date-text" id="ordersDate"></span>
+                        <span class="timezone">(MYT GMT+8)</span>
+                        <button class="show-all-btn" id="showAllOrders">Show All Orders</button>
+                    </div>
+
+                    <div class="filter-bar" id="filterBar">
+                        <div class="filter-group">
+                            <label class="filter-label">Search</label>
+                            <input type="text" class="filter-input" id="searchInput" placeholder="Order #, customer, driver...">
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">Status</label>
+                            <select class="filter-select" id="statusFilter">
+                                <option value="">All Statuses</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">Order Type</label>
+                            <select class="filter-select" id="orderTypeFilter">
+                                <option value="">All Types</option>
+                                <option value="delivery">Delivery</option>
+                                <option value="pickup">Pickup</option>
+                                <option value="dine-in">Dine-in</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">From Date</label>
+                            <input type="date" class="filter-input" id="dateFrom">
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label">To Date</label>
+                            <input type="date" class="filter-input" id="dateTo">
+                        </div>
+                        <div class="filter-actions">
+                            <button class="btn btn-primary" id="applyFilters">Apply</button>
+                            <button class="btn btn-secondary" id="clearFilters">Clear</button>
+                        </div>
+                    </div>
+
+                    <div class="table-card">
+                        <div class="table-header">
+                            <div>
+                                <h3 class="table-title">Orders</h3>
+                                <span class="table-count" id="tableCount">Loading...</span>
+                            </div>
+                            <div class="table-actions">
+                                <button class="btn btn-secondary btn-sm" id="exportCsvBtn">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                                    Export CSV
+                                </button>
+                                <button class="btn btn-secondary btn-sm" id="exportJsonBtn">
+                                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                                    Export JSON
+                                </button>
+                            </div>
+                        </div>
+                        <div class="table-wrapper">
+                            <table>
+                                <thead>
+                                    <tr>
+                                        <th data-sort="orderTimestamp" class="sorted">Order #</th>
+                                        <th data-sort="customer">Customer</th>
+                                        <th>Restaurant</th>
+                                        <th>Driver</th>
+                                        <th>Type</th>
+                                        <th data-sort="total">Total</th>
+                                        <th data-sort="status">Status</th>
+                                        <th>Order Time</th>
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody id="ordersTableBody">
+                                    <tr><td colspan="9" class="empty-state"><div class="loading-skeleton" style="height:200px;"></div></td></tr>
+                                </tbody>
+                            </table>
+                        </div>
+                        <div class="pagination">
+                            <div class="pagination-info" id="paginationInfo">Showing 0 of 0 orders</div>
+                            <div class="pagination-controls" id="paginationControls"></div>
+                        </div>
+                    </div>
                 </div>
             </div>
-
-            <div class="stats-grid" id="statsGrid">
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Total Orders</span>
-                        <div class="stat-icon green">📦</div>
-                    </div>
-                    <div class="stat-value" id="statTotalOrders">-</div>
-                    <div class="stat-change" id="statTotalOrdersChange">All time</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Today's Orders</span>
-                        <div class="stat-icon blue">📅</div>
-                    </div>
-                    <div class="stat-value" id="statTodayOrders">-</div>
-                    <div class="stat-change" id="statTodayOrdersChange">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Total Revenue</span>
-                        <div class="stat-icon purple">💰</div>
-                    </div>
-                    <div class="stat-value" id="statTotalRevenue">-</div>
-                    <div class="stat-change" id="statTotalRevenueChange">All time</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Today's Revenue</span>
-                        <div class="stat-icon orange">💵</div>
-                    </div>
-                    <div class="stat-value" id="statTodayRevenue">-</div>
-                    <div class="stat-change" id="statTodayRevenueChange">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Avg Order Value</span>
-                        <div class="stat-icon cyan">📊</div>
-                    </div>
-                    <div class="stat-value" id="statAvgOrder">-</div>
-                    <div class="stat-change">Per order average</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">This Week</span>
-                        <div class="stat-icon green">📈</div>
-                    </div>
-                    <div class="stat-value" id="statWeekOrders">-</div>
-                    <div class="stat-change" id="statWeekRevenue">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">This Month</span>
-                        <div class="stat-icon blue">🗓️</div>
-                    </div>
-                    <div class="stat-value" id="statMonthOrders">-</div>
-                    <div class="stat-change" id="statMonthRevenue">-</div>
-                </div>
-                <div class="stat-card">
-                    <div class="stat-header">
-                        <span class="stat-label">Error Rate</span>
-                        <div class="stat-icon red">⚠️</div>
-                    </div>
-                    <div class="stat-value" id="statErrorRate">-</div>
-                    <div class="stat-change" id="statErrorCount">-</div>
-                </div>
-            </div>
-
-            <div class="charts-grid">
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <h3 class="chart-title">Orders (Last 7 Days)</h3>
-                    </div>
-                    <div class="chart-body">
-                        <div class="bar-chart" id="activityChart"></div>
-                    </div>
-                </div>
-                <div class="chart-card">
-                    <div class="chart-header">
-                        <h3 class="chart-title">Status Breakdown</h3>
-                    </div>
-                    <div class="chart-body">
-                        <div class="status-list" id="statusList"></div>
-                    </div>
-                </div>
-            </div>
-
-            <div class="table-card">
-                <div class="table-header">
-                    <div>
-                        <h3 class="table-title">Recent Orders</h3>
-                        <span class="table-count" id="tableCount">Loading...</span>
-                    </div>
-                    <div style="display:flex;gap:8px;">
-                        <button class="btn btn-secondary btn-sm" id="exportFiltered">Export Filtered</button>
-                    </div>
-                </div>
-                <div class="table-wrapper">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th data-sort="orderTimestamp" class="sorted">Order #</th>
-                                <th data-sort="customer">Customer</th>
-                                <th>Restaurant</th>
-                                <th>Driver</th>
-                                <th>Type</th>
-                                <th data-sort="total">Total</th>
-                                <th data-sort="status">Status</th>
-                                <th>Order Time</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody id="ordersTableBody">
-                            <tr><td colspan="9" class="empty-state"><div class="loading-skeleton" style="height:200px;"></div></td></tr>
-                        </tbody>
-                    </table>
-                </div>
-                <div class="pagination">
-                    <div class="pagination-info" id="paginationInfo">Showing 0 of 0 orders</div>
-                    <div class="pagination-controls" id="paginationControls"></div>
-                </div>
-            </div>
-        </div>
-    </main>
+        </main>
+    </div>
 
     <div class="modal-overlay" id="orderModal">
         <div class="modal">
@@ -1010,8 +1101,30 @@ function getDashboardHTML() {
             sortBy: 'orderTimestamp',
             sortOrder: 'desc',
             loading: false,
-            summary: null
+            summary: null,
+            currentView: 'dashboard',
+            showAllOrders: false
         };
+
+        function getMalaysiaDate() {
+            const now = new Date();
+            const mytStr = now.toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
+            return new Date(mytStr);
+        }
+
+        function formatMalaysiaDate(date) {
+            return date.toLocaleDateString('en-MY', {
+                timeZone: 'Asia/Kuala_Lumpur',
+                weekday: 'long',
+                year: 'numeric',
+                month: 'long',
+                day: 'numeric'
+            });
+        }
+
+        function getMalaysiaDateStr(date) {
+            return date.toISOString().split('T')[0];
+        }
 
         function formatCurrency(amount, currency) {
             return \`\${currency || 'MYR'} \${(amount || 0).toFixed(2)}\`;
@@ -1036,7 +1149,7 @@ function getDashboardHTML() {
 
         function timeAgo(dateStr) {
             if (!dateStr) return '';
-            const now = new Date();
+            const now = getMalaysiaDate();
             const d = new Date(dateStr);
             const diff = Math.floor((now - d) / 1000);
             if (diff < 60) return 'just now';
@@ -1052,9 +1165,24 @@ function getDashboardHTML() {
             setTimeout(() => toast.classList.remove('show'), 3000);
         }
 
+        function updateDateDisplays() {
+            const myt = getMalaysiaDate();
+            const formatted = formatMalaysiaDate(myt);
+            const dateStr = getMalaysiaDateStr(myt);
+            document.getElementById('dashboardDate').textContent = formatted;
+            document.getElementById('ordersDate').textContent = formatted;
+            if (!state.showAllOrders) {
+                document.getElementById('dateFrom').value = dateStr;
+                document.getElementById('dateTo').value = dateStr;
+                state.filters.dateFrom = dateStr;
+                state.filters.dateTo = dateStr;
+            }
+        }
+
         async function fetchSummary() {
             try {
                 const res = await fetch('/api/dashboard/summary');
+                if (res.status === 401) { window.location.href = '/login'; return; }
                 const data = await res.json();
                 if (data.success) {
                     state.summary = data.data;
@@ -1088,6 +1216,7 @@ function getDashboardHTML() {
                 if (state.filters.dateTo) params.set('endDate', state.filters.dateTo);
 
                 const res = await fetch(\`/api/orders?\${params.toString()}\`);
+                if (res.status === 401) { window.location.href = '/login'; return; }
                 const data = await res.json();
 
                 if (data.success) {
@@ -1122,6 +1251,7 @@ function getDashboardHTML() {
         }
 
         function updateStats(summary) {
+            if (!summary) return;
             document.getElementById('statTotalOrders').textContent = summary.total.orders.toLocaleString();
             document.getElementById('statTodayOrders').textContent = summary.today.orders.toLocaleString();
             document.getElementById('statTotalRevenue').textContent = formatCurrency(summary.total.revenue, summary.total.currency);
@@ -1192,9 +1322,14 @@ function getDashboardHTML() {
         function updateLastFetched(timestamp) {
             const el = document.getElementById('lastUpdate');
             if (timestamp) {
-                el.textContent = \`Last fetch: \${timeAgo(timestamp)}\`;
+                const d = new Date(timestamp);
+                const myt = d.toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur', hour: '2-digit', minute: '2-digit', hour12: true });
+                const ago = timeAgo(timestamp);
+                el.textContent = \`Last fetch: \${myt} MYT (\${ago})\`;
+                el.title = \`Fetched at: \${d.toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' })} MYT\`;
             } else {
                 el.textContent = 'No orders fetched yet';
+                el.title = '';
             }
         }
 
@@ -1511,11 +1646,31 @@ function getDashboardHTML() {
             document.getElementById('searchInput').value = '';
             document.getElementById('statusFilter').value = '';
             document.getElementById('orderTypeFilter').value = '';
-            document.getElementById('dateFrom').value = '';
-            document.getElementById('dateTo').value = '';
             state.filters = { search: '', status: '', orderType: '', dateFrom: '', dateTo: '' };
             state.pagination.currentPage = 1;
+            updateDateDisplays();
             fetchOrders();
+        }
+
+        function switchView(view) {
+            state.currentView = view;
+            document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
+            document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
+
+            if (view === 'dashboard') {
+                document.getElementById('dashboardView').classList.add('active');
+                document.querySelector('[data-view="dashboard"]').classList.add('active');
+                document.getElementById('headerTitle').textContent = 'Dashboard';
+                document.getElementById('headerSubtitle').textContent = 'Overview of your order activity';
+                fetchSummary();
+            } else if (view === 'orders') {
+                document.getElementById('ordersView').classList.add('active');
+                document.querySelector('[data-view="orders"]').classList.add('active');
+                document.getElementById('headerTitle').textContent = 'All Orders';
+                document.getElementById('headerSubtitle').textContent = 'Manage and filter your orders';
+                updateDateDisplays();
+                fetchOrders();
+            }
         }
 
         function toggleTheme() {
@@ -1541,24 +1696,53 @@ function getDashboardHTML() {
             document.getElementById('sidebarOverlay').classList.toggle('show');
         }
 
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            sidebar.classList.toggle('collapsed');
+            localStorage.setItem('sidebarCollapsed', sidebar.classList.contains('collapsed'));
+        }
+
+        async function logout() {
+            try {
+                await fetch('/api/auth/logout', { method: 'POST' });
+                window.location.href = '/login';
+            } catch (e) {
+                window.location.href = '/login';
+            }
+        }
+
+        function getExportParams() {
+            const params = new URLSearchParams();
+            if (state.filters.status) params.set('status', state.filters.status);
+            if (state.filters.dateFrom) params.set('startDate', state.filters.dateFrom);
+            if (state.filters.dateTo) params.set('endDate', state.filters.dateTo);
+            if (state.filters.orderType) params.set('orderType', state.filters.orderType);
+            if (state.filters.search) params.set('search', state.filters.search);
+            return params.toString();
+        }
+
         document.addEventListener('DOMContentLoaded', () => {
             const savedTheme = localStorage.getItem('theme') || 'light';
             document.documentElement.setAttribute('data-theme', savedTheme);
             updateThemeIcon(savedTheme);
 
-            const today = new Date();
-            document.getElementById('dateTo').value = today.toISOString().split('T')[0];
-            const weekAgo = new Date(today);
-            weekAgo.setDate(weekAgo.getDate() - 7);
-            document.getElementById('dateFrom').value = weekAgo.toISOString().split('T')[0];
+            const sidebarCollapsed = localStorage.getItem('sidebarCollapsed') === 'true';
+            if (sidebarCollapsed) {
+                document.getElementById('sidebar').classList.add('collapsed');
+            }
+
+            updateDateDisplays();
 
             document.getElementById('themeToggle').addEventListener('click', toggleTheme);
             document.getElementById('refreshBtn').addEventListener('click', () => {
-                fetchSummary();
-                fetchOrders();
+                if (state.currentView === 'dashboard') {
+                    fetchSummary();
+                } else {
+                    fetchOrders();
+                }
             });
-            document.getElementById('applyFilters').addEventListener('click', applyFilters);
-            document.getElementById('clearFilters').addEventListener('click', clearFilters);
+            document.getElementById('logoutBtn').addEventListener('click', logout);
+            document.getElementById('sidebarCollapseBtn').addEventListener('click', toggleSidebar);
             document.getElementById('mobileMenuBtn').addEventListener('click', toggleMobileMenu);
             document.getElementById('sidebarOverlay').addEventListener('click', toggleMobileMenu);
             document.getElementById('modalClose').addEventListener('click', () => {
@@ -1570,34 +1754,36 @@ function getDashboardHTML() {
                 }
             });
 
-            document.getElementById('exportFiltered').addEventListener('click', () => {
-                const params = new URLSearchParams({ format: 'csv' });
-                if (state.filters.status) params.set('status', state.filters.status);
-                if (state.filters.dateFrom) params.set('startDate', state.filters.dateFrom);
-                if (state.filters.dateTo) params.set('endDate', state.filters.dateTo);
-                window.open(\`/api/orders/export/csv?\${params.toString()}\`, '_blank');
+            document.getElementById('applyFilters').addEventListener('click', applyFilters);
+            document.getElementById('clearFilters').addEventListener('click', clearFilters);
+
+            document.getElementById('exportCsvBtn').addEventListener('click', () => {
+                const params = getExportParams();
+                window.open(\`/api/orders/export/csv?\${params}\`, '_blank');
+            });
+
+            document.getElementById('exportJsonBtn').addEventListener('click', () => {
+                const params = getExportParams();
+                window.open(\`/api/orders/export/json?\${params}\`, '_blank');
+            });
+
+            document.getElementById('showAllOrders').addEventListener('click', () => {
+                state.showAllOrders = true;
+                document.getElementById('dateFrom').value = '';
+                document.getElementById('dateTo').value = '';
+                state.filters.dateFrom = '';
+                state.filters.dateTo = '';
+                state.pagination.currentPage = 1;
+                fetchOrders();
             });
 
             document.querySelectorAll('.nav-item[data-view]').forEach(item => {
                 item.addEventListener('click', (e) => {
                     e.preventDefault();
                     const view = item.dataset.view;
-                    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-                    item.classList.add('active');
-                    if (view === 'orders') {
-                        clearFilters();
-                    }
-                });
-            });
-
-            document.querySelectorAll('.nav-item[data-view]').forEach(item => {
-                item.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const view = item.dataset.view;
-                    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-                    item.classList.add('active');
-                    if (view === 'orders') {
-                        clearFilters();
+                    switchView(view);
+                    if (window.innerWidth < 768) {
+                        toggleMobileMenu();
                     }
                 });
             });
@@ -1621,12 +1807,14 @@ function getDashboardHTML() {
                 if (e.key === 'Enter') applyFilters();
             });
 
-            fetchSummary();
-            fetchOrders();
-
+            switchView('dashboard');
             setInterval(() => {
-                fetchSummary();
-                fetchOrders();
+                updateDateDisplays();
+                if (state.currentView === 'dashboard') {
+                    fetchSummary();
+                } else {
+                    fetchOrders();
+                }
             }, 60000);
         });
     </script>

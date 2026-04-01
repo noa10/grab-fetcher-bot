@@ -19,8 +19,9 @@ A free, open-source automation tool designed to fetch order data from Grab Merch
 - **Data Extraction**: Captures customer name, order number, driver name, pricing, and timestamps
 - **Screenshot Capture**: Takes screenshots of order details for record keeping
 - **Database Storage**: Stores data in MongoDB Atlas with 15-minute expiration handling
-- **Export Functionality**: Export data to CSV or JSON formats
-- **Web Dashboard**: Simple web interface to view orders and statistics
+- **Export Functionality**: Export data to CSV or JSON formats with filter support
+- **Premium Dashboard**: Modern web interface with real-time stats, charts, and order management
+- **Authentication**: Secure login with session management, remember me, and password reset
 - **Anti-Detection**: Basic measures to avoid detection (user-agent rotation, delays)
 - **Error Handling**: Comprehensive error handling and retry mechanisms
 - **Free Deployment**: Runs on GitHub Actions schedules and Vercel serverless functions within free tiers
@@ -91,9 +92,64 @@ npm run server
 
 ### 4. Access Dashboard
 
-Open http://localhost:3000/dashboard to view the web interface.
+Open http://localhost:3000/login to sign in, then access the dashboard at http://localhost:3000/dashboard.
+
+**Default credentials:** `admin` / `admin123` (change via `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables)
 
 > When you're ready to automate the fetcher, continue with the [Deployment](#-deployment) steps to configure GitHub Actions and Vercel.
+
+## 🔐 Authentication
+
+The dashboard is protected with session-based authentication.
+
+### Default Admin Account
+
+On first startup, a default admin account is created automatically:
+- **Username:** `admin` (or value of `ADMIN_USERNAME`)
+- **Password:** `admin123` (or value of `ADMIN_PASSWORD`)
+
+> **Important:** Change the default credentials immediately in production.
+
+### Features
+
+- **Login page** with username/password authentication
+- **Remember me** toggle (extends session to 30 days vs default 24 hours)
+- **Forgot password** flow with on-screen reset code (15-minute expiry)
+- **Session management** via secure HTTP-only cookies
+- **API protection** — all `/api/*` endpoints require authentication (except `/health`)
+
+### Setting Custom Admin Credentials
+
+Add to your `.env` file:
+
+```env
+ADMIN_USERNAME=your_username
+ADMIN_PASSWORD=your_secure_password
+SESSION_SECRET=your_random_secret_key_change_this_in_production
+```
+
+## 🖥️ Dashboard v2
+
+The dashboard has been completely redesigned with a modern UI/UX.
+
+### Views
+
+- **Dashboard** — Real-time statistics, activity charts, and status breakdown
+- **All Orders** — Full order management with filters, pagination, and export
+- **Health Check** — System status with database, memory, and uptime monitoring
+
+### Key Features
+
+| Feature | Description |
+|---------|-------------|
+| Malaysia Time (MYT) | All dates display in GMT+8 timezone |
+| Collapsible Sidebar | Toggle between full and icon-only modes |
+| Sticky Navigation | Sidebar stays visible while scrolling |
+| Dark/Light Theme | Toggle with preference persistence |
+| Real-time Stats | Cards fetch live data from MongoDB |
+| Filtered Export | CSV/JSON export respects active filters |
+| Today's Orders Default | All Orders view defaults to current date |
+| Auto-refresh | Data refreshes every 60 seconds |
 
 ## 📦 Deployment
 
@@ -115,6 +171,9 @@ Open http://localhost:3000/dashboard to view the web interface.
 3. Under **Environment Variables**, add:
    - `MONGODB_URI` — same MongoDB connection string used in GitHub Actions
    - `NODE_ENV` — set to `production`
+   - `ADMIN_USERNAME` — your dashboard admin username
+   - `ADMIN_PASSWORD` — your dashboard admin password
+   - `SESSION_SECRET` — a random string for session encryption
 4. Deploy the project. Vercel will automatically redeploy on every push to the connected branch.
 
 > The dashboard is served by Vercel serverless functions that read from the same MongoDB Atlas instance where GitHub Actions writes fetched orders.
@@ -137,99 +196,51 @@ npm start
 npm run server
 ```
 
-## 📋 CLI Quick Reference
-
-```bash
-# Show statistics
-npm run orders:stats
-
-# Show today's orders
-npm run orders:today
-
-# Export to CSV
-npm run orders:export
-
-# Start API server
-npm run server
-```
-
-### API Endpoints (when server is running)
-
-```bash
-# Get all orders (paginated)
-curl "http://localhost:3000/api/orders?page=1&limit=20"
-
-# Get recent orders
-curl http://localhost:3000/api/orders/recent
-
-# Get statistics
-curl http://localhost:3000/api/orders/stats
-
-# Export CSV
-curl http://localhost:3000/api/orders/export/csv > orders.csv
-```
-
-## 📋 CLI Quick Reference
-
-```bash
-# Show statistics
-npm run orders:stats
-
-# Show today's orders
-npm run orders:today
-
-# Export to CSV
-npm run orders:export
-
-# Start API server
-npm run server
-```
-
-### API Endpoints (when server is running)
-
-```bash
-# Get all orders (paginated)
-curl "http://localhost:3000/api/orders?page=1&limit=20"
-
-# Get recent orders
-curl http://localhost:3000/api/orders/recent
-
-# Get statistics
-curl http://localhost:3000/api/orders/stats
-
-# Export CSV
-curl http://localhost:3000/api/orders/export/csv > orders.csv
-```
-
 ## 📊 API Endpoints
 
-### Orders API
+### Authentication API
 
-- `GET /api/orders` - Get all orders with pagination
-- `GET /api/orders/recent` - Get recent orders (last 24h)
-- `GET /api/orders/stats` - Get order statistics
-- `GET /api/orders/:id` - Get specific order
-- `GET /api/orders/search/:query` - Search orders
-- `GET /api/orders/export/csv` - Export as CSV
-- `GET /api/orders/export/json` - Export as JSON
+- `GET /login` — Login page
+- `POST /api/auth/login` — Authenticate (body: `{ username, password, rememberMe }`)
+- `POST /api/auth/logout` — End session
+- `POST /api/auth/forgot-password` — Generate password reset code (body: `{ username }`)
+- `POST /api/auth/reset-password` — Reset password (body: `{ username, token, newPassword }`)
+- `GET /api/auth/me` — Get current user info
 
-### System API
+### Orders API (requires authentication)
 
-- `GET /health` - Health check
-- `GET /dashboard` - Web dashboard
+- `GET /api/orders` — Get all orders with pagination and filtering
+- `GET /api/orders/recent` — Get recent orders (last 24h)
+- `GET /api/orders/stats` — Get order statistics
+- `GET /api/orders/:id` — Get specific order
+- `GET /api/orders/search/:query` — Search orders
+- `GET /api/orders/export/csv` — Export filtered orders as CSV
+- `GET /api/orders/export/json` — Export filtered orders as JSON
 
-### Example API Usage
+### Dashboard API (requires authentication)
 
-```bash
-# Get recent orders
-curl http://localhost:3000/api/orders/recent
+- `GET /api/dashboard/summary` — Get dashboard statistics, charts data, and status breakdown
 
-# Get statistics
-curl http://localhost:3000/api/orders/stats
+### System API (public)
 
-# Export CSV
-curl http://localhost:3000/api/orders/export/csv > orders.csv
-```
+- `GET /health` — Health check (returns HTML UI or JSON based on Accept header)
+- `GET /dashboard` — Web dashboard (requires authentication)
+
+### Filtering Orders
+
+The `/api/orders` endpoint supports these query parameters:
+
+| Parameter | Description | Example |
+|-----------|-------------|---------|
+| `page` | Page number | `?page=1` |
+| `limit` | Results per page (max 100) | `?limit=20` |
+| `search` | Search across multiple fields | `?search=order123` |
+| `status` | Filter by status | `?status=completed` |
+| `orderType` | Filter by type | `?orderType=delivery` |
+| `startDate` | Filter from date | `?startDate=2026-04-01` |
+| `endDate` | Filter to date | `?endDate=2026-04-02` |
+| `sortBy` | Sort field | `?sortBy=orderTimestamp` |
+| `sortOrder` | Sort direction | `?sortOrder=desc` |
 
 ## ⚙️ Configuration
 
@@ -240,6 +251,9 @@ curl http://localhost:3000/api/orders/export/csv > orders.csv
 | `GRAB_USERNAME` | Grab merchant email | Required |
 | `GRAB_PASSWORD` | Grab merchant password | Required |
 | `MONGODB_URI` | MongoDB connection string | Required |
+| `ADMIN_USERNAME` | Dashboard admin username | `admin` |
+| `ADMIN_PASSWORD` | Dashboard admin password | `admin123` |
+| `SESSION_SECRET` | Session encryption key | `grab-fetcher-secret-change-in-production` |
 | `POLLING_INTERVAL_MINUTES` | Polling frequency | 2 |
 | `HEADLESS_MODE` | Run browser in headless mode | true |
 | `SCREENSHOT_ENABLED` | Enable screenshot capture | true |
@@ -271,12 +285,19 @@ grab-order-fetcher-bot/
 ├── .github/
 │   └── workflows/
 │       └── fetch-orders.yml   # Scheduled GitHub Actions workflow
+├── api/                        # Vercel serverless functions
+│   ├── dashboard.js
+│   ├── dashboard/summary.js
+│   ├── health.js
+│   └── orders/
 ├── src/
 │   ├── index.js              # Main entry point
 │   ├── config/
 │   │   └── database.js       # Database configuration
 │   ├── models/
-│   │   └── Order.js          # Order data model
+│   │   ├── Order.js          # Order data model
+│   │   ├── User.js           # User authentication model
+│   │   └── PasswordReset.js  # Password reset tokens
 │   ├── services/
 │   │   ├── grabBot.js        # Puppeteer automation
 │   │   ├── orderExtractor.js # Data extraction logic
@@ -288,8 +309,12 @@ grab-order-fetcher-bot/
 │   │   └── errorHandler.js   # Error handling
 │   └── api/
 │       ├── server.js         # Express server
+│       ├── dashboard-template.js  # Dashboard HTML template
+│       ├── login-template.js      # Login page HTML template
+│       ├── health-template.js     # Health check HTML template
 │       └── routes/
-│           └── orders.js     # API routes
+│           ├── orders.js     # Order API routes
+│           └── auth.js       # Authentication routes & middleware
 ├── screenshots/              # Screenshot storage
 ├── exports/                  # Export files
 ├── logs/                     # Log files
@@ -389,6 +414,41 @@ curl http://localhost:3000/api/orders/stats
 - Data encryption in MongoDB Atlas
 - No hardcoded secrets in code
 - Basic anti-detection measures
+
+## 📄 Changelog
+
+### v1.0.0 (2026-04-02) — Initial Release
+
+Complete dashboard overhaul with authentication and modern UI/UX.
+
+#### Authentication & Security
+- Session-based login with `express-session` and `bcryptjs`
+- Remember me toggle (30-day sessions)
+- Forgot password flow with on-screen reset codes
+- Protected API endpoints — all `/api/*` routes require authentication
+- Default admin account (`admin`/`admin123`, configurable via env vars)
+
+#### Dashboard UI/UX
+- Redesigned single-page application with view switching
+- **Dashboard view**: Real-time stats, activity charts, status breakdown (no order table)
+- **All Orders view**: Full order management with working filter bar, pagination, and export
+- **Health Check view**: Proper status page with cards instead of raw JSON
+- Malaysia Time (MYT GMT+8) displayed on all views
+- Collapsible sidebar (full ↔ icon-only) with sticky positioning
+- Dark/light theme toggle with persistence
+- Auto-refresh every 60 seconds
+
+#### Data & API
+- Dashboard stats cards fetch real-time data from MongoDB
+- All Orders defaults to today's orders (MYT timezone)
+- "Show All Orders" button to view historical data
+- Export CSV/JSON buttons moved to All Orders page, respects active filters
+- Last fetch indicator shows actual MYT time with relative ago text
+
+#### New Dependencies
+- `express-session` — Session management
+- `bcryptjs` — Password hashing
+- `cookie-parser` — Cookie handling
 
 ## 📄 License
 
