@@ -27,7 +27,7 @@ module.exports = async (req, res) => {
         stats: '/api/orders/stats',
         export: '/api/orders/export'
       },
-      documentation: 'https://github.com/your-username/grab-order-fetcher-bot',
+      documentation: 'https://github.com/khairulanwar/grab-fetcher-bot',
       deployment: 'vercel-serverless'
     };
 

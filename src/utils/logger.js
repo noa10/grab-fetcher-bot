@@ -2,10 +2,17 @@ const winston = require('winston');
 const path = require('path');
 const fs = require('fs');
 
-// Ensure logs directory exists
-const logsDir = path.join(process.cwd(), 'logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
+// Ensure logs directory exists (skip on serverless environments)
+const isServerless = process.env.VERCEL === '1' || process.env.AWS_LAMBDA_FUNCTION_NAME || process.env.NETLIFY === 'true';
+const logsDir = isServerless ? '/tmp/logs' : path.join(process.cwd(), 'logs');
+if (!isServerless) {
+  try {
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+  } catch (err) {
+    console.warn('Failed to create logs directory:', err.message);
+  }
 }
 
 // Custom format for console output
@@ -29,24 +36,29 @@ const fileFormat = winston.format.combine(
 );
 
 // Create logger instance
-const logger = winston.createLogger({
-  level: process.env.LOG_LEVEL || 'info',
-  format: fileFormat,
-  defaultMeta: { service: 'grab-order-fetcher' },
-  transports: [
-    // File transport for all logs
+const loggerTransports = [];
+if (!isServerless) {
+  loggerTransports.push(
     new winston.transports.File({
       filename: path.join(logsDir, 'error.log'),
       level: 'error',
-      maxsize: 5242880, // 5MB
+      maxsize: 5242880,
       maxFiles: 5,
     }),
     new winston.transports.File({
       filename: path.join(logsDir, 'combined.log'),
-      maxsize: 5242880, // 5MB
+      maxsize: 5242880,
       maxFiles: 5,
-    }),
-  ],
+    })
+  );
+}
+loggerTransports.push(new winston.transports.Console({ format: consoleFormat }));
+
+const logger = winston.createLogger({
+  level: process.env.LOG_LEVEL || 'info',
+  format: fileFormat,
+  defaultMeta: { service: 'grab-order-fetcher' },
+  transports: loggerTransports,
 });
 
 // Add console transport for non-production environments
