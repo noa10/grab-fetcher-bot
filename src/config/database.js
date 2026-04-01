@@ -9,17 +9,11 @@ class Database {
 
   async connect() {
     try {
-      if (this.isConnected) {
-        logger.info('Database already connected');
-        return this.connection;
-      }
-
       const mongoUri = process.env.MONGODB_URI;
       if (!mongoUri) {
         throw new Error('MONGODB_URI environment variable is not set');
       }
 
-      // Connection options for MongoDB Atlas
       const options = {
         maxPoolSize: 20,
         serverSelectionTimeoutMS: 10000,
@@ -27,24 +21,19 @@ class Database {
         bufferCommands: true,
       };
 
+      // Reconnect if connection was closed (warm container scenario)
+      if (mongoose.connection.readyState === 0 || mongoose.connection.readyState === 3) {
+        this.isConnected = false;
+        this.connection = null;
+      }
+
+      if (this.isConnected && mongoose.connection.readyState === 1) {
+        logger.info('Database already connected');
+        return this.connection;
+      }
+
       this.connection = await mongoose.connect(mongoUri, options);
       this.isConnected = true;
-
-      // Wait for mongoose to be fully connected before allowing queries
-      if (mongoose.connection.readyState !== 1) {
-        await new Promise((resolve) => {
-          const check = setInterval(() => {
-            if (mongoose.connection.readyState === 1) {
-              clearInterval(check);
-              resolve();
-            }
-          }, 50);
-          setTimeout(() => {
-            clearInterval(check);
-            resolve();
-          }, 3000);
-        });
-      }
 
       logger.info('Successfully connected to MongoDB Atlas');
 
@@ -73,6 +62,10 @@ class Database {
   }
 
   async disconnect() {
+    // Don't disconnect on serverless - keep connection alive for warm containers
+    if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+      return;
+    }
     try {
       if (this.connection) {
         await mongoose.disconnect();
@@ -81,7 +74,69 @@ class Database {
       }
     } catch (error) {
       logger.error('Error disconnecting from MongoDB:', error);
+    }
+  }
+
+      const options = {
+        maxPoolSize: 20,
+        serverSelectionTimeoutMS: 10000,
+        socketTimeoutMS: 45000,
+        bufferCommands: true,
+      };
+
+      // Reconnect if connection was closed (warm container scenario)
+      if (mongoose.connection.readyState === 0 || mongoose.connection.readyState === 3) {
+        this.isConnected = false;
+        this.connection = null;
+      }
+
+      if (this.isConnected && mongoose.connection.readyState === 1) {
+        logger.info('Database already connected');
+        return this.connection;
+      }
+
+      this.connection = await mongoose.connect(mongoUri, options);
+      this.isConnected = true;
+
+      logger.info('Successfully connected to MongoDB Atlas');
+
+      // Handle connection events
+      mongoose.connection.on('error', (error) => {
+        logger.error('MongoDB connection error:', error);
+        this.isConnected = false;
+      });
+
+      mongoose.connection.on('disconnected', () => {
+        logger.warn('MongoDB disconnected');
+        this.isConnected = false;
+      });
+
+      mongoose.connection.on('reconnected', () => {
+        logger.info('MongoDB reconnected');
+        this.isConnected = true;
+      });
+
+      return this.connection;
+    } catch (error) {
+      logger.error('Failed to connect to MongoDB:', error);
+      this.isConnected = false;
       throw error;
+    }
+  }
+
+  async disconnect() {
+    // Don't disconnect on serverless - keep connection alive for warm containers
+    if (process.env.VERCEL || process.env.AWS_LAMBDA_FUNCTION_NAME) {
+      return;
+    }
+    try {
+      if (this.connection) {
+        await mongoose.disconnect();
+        this.isConnected = false;
+        logger.info('Disconnected from MongoDB');
+      }
+    } catch (error) {
+      logger.error('Error disconnecting from MongoDB:', error);
     }
   }
 
