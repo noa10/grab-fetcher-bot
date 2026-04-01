@@ -24,7 +24,7 @@ screenshots/
 # Exports
 exports/
 *.csv
-*.json
+exports/*.json
 !package-lock.json
 
 # Runtime data

@@ -30,6 +30,22 @@ class Database {
       this.connection = await mongoose.connect(mongoUri, options);
       this.isConnected = true;
 
+      // Wait for mongoose to be fully connected before allowing queries
+      if (mongoose.connection.readyState !== 1) {
+        await new Promise((resolve) => {
+          const check = setInterval(() => {
+            if (mongoose.connection.readyState === 1) {
+              clearInterval(check);
+              resolve();
+            }
+          }, 50);
+          setTimeout(() => {
+            clearInterval(check);
+            resolve();
+          }, 3000);
+        });
+      }
+
       logger.info('Successfully connected to MongoDB Atlas');
 
       // Handle connection events
