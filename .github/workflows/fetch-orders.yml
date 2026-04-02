@@ -2,8 +2,9 @@ name: Fetch Grab Orders
 
 on:
   schedule:
-    # Run every 5 minutes
-    - cron: '*/5 * * * *'
+    # Run every 5 minutes during 3:00-14:55 UTC (11:00 AM - 10:55 PM MYT)
+    # Additional time check ensures cutoff at exactly 10:30 PM MYT
+    - cron: '*/5 3-14 * * *'
   workflow_dispatch: # Allow manual triggering
 
 jobs:
@@ -14,7 +15,27 @@ jobs:
     steps:
     - name: Checkout repository
       uses: actions/checkout@v4
-      
+
+    - name: Check Malaysia Time window
+      run: |
+        CURRENT_UTC_HOUR=$(date -u +"%H")
+        CURRENT_UTC_MIN=$(date -u +"%M")
+
+        echo "Current UTC: ${CURRENT_UTC_HOUR}:${CURRENT_UTC_MIN}"
+        MYT_HOUR=$((10#$CURRENT_UTC_HOUR + 8))
+        if [ $MYT_HOUR -ge 24 ]; then
+          MYT_HOUR=$((MYT_HOUR - 24))
+        fi
+        MYT_TIME=$(printf "%02d:%s" $MYT_HOUR $CURRENT_UTC_MIN)
+        echo "Current MYT: ${MYT_TIME}"
+
+        # Skip if past 22:25 MYT (14:25 UTC)
+        if [ "$CURRENT_UTC_HOUR" -ge 14 ] && [ "$CURRENT_UTC_MIN" -gt 25 ]; then
+          echo "Outside operating hours (11:00 AM - 10:30 PM MYT). Exiting early."
+          exit 0
+        fi
+        echo "Within operating hours. Proceeding..."
+
     - name: Setup Node.js
       uses: actions/setup-node@v4
       with:
