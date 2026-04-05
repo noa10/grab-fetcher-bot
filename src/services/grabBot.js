@@ -38,7 +38,10 @@ class GrabBot {
         defaultViewport: { width: 1366, height: 768 }
       };
 
-      if (process.env.NODE_ENV === 'production') {
+      // Allow manual override for self-hosted environments
+      if (process.env.PUPPETEER_EXECUTABLE_PATH) {
+        browserOptions.executablePath = process.env.PUPPETEER_EXECUTABLE_PATH;
+      } else if (process.env.NODE_ENV === 'production') {
         const chromium = require('@sparticuz/chromium');
         browserOptions.executablePath = await chromium.executablePath();
         browserOptions.args = [...browserOptions.args, ...chromium.args];
@@ -189,7 +192,7 @@ class GrabBot {
       }
 
       const currentUrl = this.page.url();
-      logger.puppeteer('Current URL after login:', currentUrl);
+      logger.puppeteer(`Current URL after login: ${currentUrl}`);
 
       if (currentUrl.includes('login') || currentUrl.includes('challenge')) {
         logger.puppeteer('Still on login/challenge page - checking for errors...');
@@ -303,7 +306,7 @@ class GrabBot {
       logger.puppeteer(`Popup closing complete after ${attempts} attempts`);
       return true;
     } catch (error) {
-      logger.puppeteer('Error closing popups:', error.message);
+      logger.puppeteer(`Error closing popups: ${error.message}`);
       return false;
     }
   }
@@ -346,7 +349,7 @@ class GrabBot {
       await this.closePopups();
 
       const currentUrl = this.page.url();
-      logger.puppeteer('Current URL:', currentUrl);
+      logger.puppeteer(`Current URL: ${currentUrl}`);
 
       if (currentUrl.includes('/order')) {
         logger.puppeteer('Already on orders page');
@@ -459,7 +462,7 @@ class GrabBot {
             hasTabs: !!document.querySelector('.dui-tabs')
           };
         });
-        logger.puppeteer('Page content check:', JSON.stringify(pageContent));
+        logger.puppeteer(`Page content check: url=${pageContent.url}, hasSidebar=${pageContent.hasSidebar}, hasTable=${pageContent.hasTable}, hasTabs=${pageContent.hasTabs}`);
 
         try {
           await this.page.waitForSelector('.sidebar-menu, .dui-table-container', { timeout: 20000 });
@@ -471,8 +474,8 @@ class GrabBot {
         }
 
         this.lastActivity = Date.now();
-        logger.puppeteer('Successfully navigated to orders section');
-        logger.puppeteer('Current URL:', this.page.url());
+        logger.puppeteer(`Successfully navigated to orders section`);
+        logger.puppeteer(`Current URL: ${this.page.url()}`);
         return true;
       } else {
         const pageTitle = await this.page.title();
@@ -480,8 +483,8 @@ class GrabBot {
           const sidebar = document.querySelector('.sidebar-menu, .menu-items-container, nav');
           return sidebar ? sidebar.textContent.trim().substring(0, 500) : 'No sidebar found';
         });
-        logger.puppeteer('Page title:', pageTitle);
-        logger.puppeteer('Sidebar content:', sidebarContent);
+        logger.puppeteer(`Page title: ${pageTitle}`);
+        logger.puppeteer(`Sidebar content: ${sidebarContent}`);
         await this.page.screenshot({ path: 'screenshots/debug-orders-nav.png', fullPage: true });
         logger.puppeteer('Debug screenshot saved to screenshots/debug-orders-nav.png');
         throw new Error('Could not find orders navigation link');
@@ -525,7 +528,7 @@ class GrabBot {
         return { clicked: false, strategy: 'none' };
       });
 
-      logger.puppeteer('History tab click result:', JSON.stringify(historyTabClicked));
+      logger.puppeteer(`History tab click result: ${JSON.stringify(historyTabClicked)}`);
 
       if (historyTabClicked.clicked) {
         logger.puppeteer(`History tab clicked (strategy: ${historyTabClicked.strategy})`);

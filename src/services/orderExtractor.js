@@ -33,7 +33,7 @@ class OrderExtractor {
           hasTableBody: !!document.querySelector('.dui-table-body'),
           bodyText: document.body.textContent.substring(0, 300)
         }));
-        logger.order('Page state:', JSON.stringify(pageState));
+        logger.order(`Page state: hasTable=${pageState.hasHistoryTable || pageState.hasTableBody}, url=${pageState.url}`);
         if (!pageState.hasHistoryTable && !pageState.hasTableBody) {
           return [];
         }
