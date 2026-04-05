@@ -74,30 +74,156 @@ class GitHubActionsRunner {
         2000
       );
 
+      let totalNewOrders = 0;
       if (orders.length === 0) {
-        logger.bot('No new orders found');
-        logger.performance('Poll cycle (no orders)', startTime);
-        return { success: true, ordersProcessed: 0 };
+        logger.bot('No new orders found, proceeding with state sync...');
+      } else {
+        logger.bot(`Found ${orders.length} new orders`);
+
+        // Process each order
+        let processedCount = 0;
+        for (const orderData of orders) {
+          const processed = await this.processOrder(orderData);
+          if (processed) processedCount++;
+        }
+        totalNewOrders = processedCount;
+
+        logger.bot(`Successfully processed ${processedCount}/${orders.length} new orders`);
       }
 
-      logger.bot(`Found ${orders.length} new orders`);
+      // Sync driver state and order status for ALL orders in history table
+      const syncResult = await this.syncOrderStates();
 
-      // Process each order
-      let processedCount = 0;
-      for (const orderData of orders) {
-        const processed = await this.processOrder(orderData);
-        if (processed) processedCount++;
+      // Early-exit check: if nothing changed in either loop
+      const hasChanges = totalNewOrders > 0 || syncResult.updatedCount > 0 || syncResult.registeredCount > 0;
+
+      if (!hasChanges) {
+        logger.bot('No updates needed — all orders up to date, no new orders found');
       }
+
+      // Logout from portal before cleanup
+      await this.logoutFromPortal();
 
       logger.performance('Poll cycle completed', startTime);
-      logger.bot(`Successfully processed ${processedCount}/${orders.length} orders`);
+      logger.bot('Poll cycle completed — logged out from portal');
 
-      return { success: true, ordersProcessed: processedCount };
+      return { success: true, ordersProcessed: totalNewOrders, stateUpdates: syncResult.updatedCount };
 
     } catch (error) {
       logger.error('Error during polling cycle:', error);
       logger.performance('Poll cycle (error)', startTime);
+      
+      // Attempt logout even on error
+      try {
+        await this.logoutFromPortal();
+      } catch (logoutError) {
+        logger.error('Failed to logout on error:', logoutError);
+      }
+      
       return { success: false, error: error.message };
+    }
+  }
+
+  /**
+   * Sync driver state and order status for all orders in history table
+   */
+  async syncOrderStates() {
+    try {
+      logger.bot('Starting order state synchronization...');
+
+      const extractor = new OrderExtractor(this.bot.getPage());
+      const stateUpdates = await extractor.extractOrdersForStateUpdate();
+
+      if (stateUpdates.length === 0) {
+        logger.bot('No orders found for state sync');
+        return { updatedCount: 0, registeredCount: 0, totalChecked: 0 };
+      }
+
+      let updatedCount = 0;
+      let registeredCount = 0;
+
+      for (const update of stateUpdates) {
+        const existingOrder = await Order.findByOrderNumber(update.orderNumber);
+
+        if (existingOrder) {
+          const needsUpdate = update.driverStatus && existingOrder.driverStatus !== update.driverStatus
+            || existingOrder.status !== update.status;
+
+          if (!needsUpdate) {
+            continue;
+          }
+
+          const updateFields = {
+            lastUpdated: new Date(),
+          };
+
+          if (update.driverStatus) {
+            updateFields.driverStatus = update.driverStatus;
+          }
+
+          updateFields.status = update.status;
+
+          await Order.updateOne(
+            { orderNumber: update.orderNumber },
+            { $set: updateFields }
+          );
+
+          updatedCount++;
+        } else if (update.status !== 'unknown' && update.orderNumber) {
+          const order = new Order({
+            orderNumber: update.orderNumber,
+            longOrderId: update.longOrderId || '',
+            customerName: 'Customer',
+            driverName: 'Pending',
+            driverStatus: update.driverStatus,
+            status: update.status,
+            orderTimestamp: new Date(),
+            pricing: {
+              subtotal: 0,
+              deliveryFee: 0,
+              serviceFee: 0,
+              tax: 0,
+              discount: 0,
+              total: 0,
+              currency: 'MYR',
+            },
+            orderDetails: {
+              restaurantName: 'Grab Order',
+              orderType: 'delivery',
+              items: [],
+              specialInstructions: '',
+            },
+            deliveryInfo: {
+              address: '',
+              coordinates: { latitude: null, longitude: null },
+              estimatedDeliveryTime: null,
+              actualDeliveryTime: null,
+            },
+            source: 'grab-merchant-portal-history-state-sync',
+          });
+
+          await order.save();
+          registeredCount++;
+          logger.order(`Registered new order from state sync: ${update.orderNumber}`);
+        }
+      }
+
+      logger.bot(`State sync completed: ${updatedCount} orders updated, ${registeredCount} orders registered, ${stateUpdates.length} total checked`);
+      return { updatedCount, registeredCount, totalChecked: stateUpdates.length };
+    } catch (error) {
+      logger.error('Failed to sync order states:', error);
+      return { updatedCount: 0, registeredCount: 0, totalChecked: 0 };
+    }
+  }
+
+  /**
+   * Logout from Grab Merchant Portal
+   */
+  async logoutFromPortal() {
+    try {
+      await this.bot.logoutFromPortal();
+    } catch (error) {
+      logger.error('Failed to logout from portal:', error);
     }
   }
 
