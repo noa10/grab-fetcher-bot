@@ -61,6 +61,7 @@ temp/
 .qwen/
 .cursor/
 .kilocode/
+.kilo/
 
 # Vercel
 .vercel
