@@ -614,6 +614,144 @@ class OrderExtractor {
     }
   }
 
+  async extractOrdersForStateUpdate() {
+    try {
+      logger.order('Starting state-only extraction from History tab...');
+
+      if (!this.page || this.page.isClosed()) {
+        throw new Error('Page not available for state extraction');
+      }
+
+      try {
+        await this.page.waitForSelector('.history-table-list, .dui-table-body', { timeout: 10000 });
+      } catch (e) {
+        logger.order('Table selector not found, checking page state...');
+        const pageState = await this.page.evaluate(() => ({
+          url: window.location.href,
+          hasHistoryTable: !!document.querySelector('.history-table-list'),
+          hasTableBody: !!document.querySelector('.dui-table-body'),
+        }));
+        logger.order(`Page state: hasTable=${pageState.hasHistoryTable || pageState.hasTableBody}, url=${pageState.url}`);
+        if (!pageState.hasHistoryTable && !pageState.hasTableBody) {
+          return [];
+        }
+      }
+
+      await sleep(2000);
+
+      const rows = await this.page.evaluate(() => {
+        const tableWrapper = document.querySelector('.history-table-list');
+        if (!tableWrapper) return [];
+
+        const allRows = tableWrapper.querySelectorAll('.dui-table-body tbody tr');
+        return Array.from(allRows).filter(row => {
+          if (row.getAttribute('aria-hidden') === 'true') return false;
+          if (row.classList.contains('dui-table-measure-row')) return false;
+          if (row.offsetHeight === 0) return false;
+          return true;
+        }).length;
+      });
+
+      logger.order(`Found ${rows} order rows in history table for state update`);
+
+      if (rows === 0) {
+        return [];
+      }
+
+      const results = [];
+
+      for (let i = 0; i < rows; i++) {
+        try {
+          if (!this.page || this.page.isClosed()) {
+            logger.order('Page is closed, returning current results');
+            break;
+          }
+
+          const rowData = await this.page.evaluate((index) => {
+            const tableWrapper = document.querySelector('.history-table-list');
+            if (!tableWrapper) return null;
+
+            const allRows = tableWrapper.querySelectorAll('.dui-table-body tbody tr');
+            const visibleRows = Array.from(allRows).filter(row => {
+              if (row.getAttribute('aria-hidden') === 'true') return false;
+              if (row.classList.contains('dui-table-measure-row')) return false;
+              if (row.offsetHeight === 0) return false;
+              return true;
+            });
+
+            const row = visibleRows[index];
+            if (!row) return null;
+
+            const cells = row.querySelectorAll('.dui-table-cell');
+            if (cells.length < 4) return null;
+
+            const longOrderId = cells[1]?.textContent?.trim() || '';
+            const shortOrderId = cells[2]?.textContent?.trim() || '';
+
+            const statusText = cells[4]?.textContent?.trim() || '';
+            let status = 'unknown';
+            const statusLower = statusText.toLowerCase();
+            if (statusLower.includes('complet')) status = 'completed';
+            else if (statusLower.includes('cancel')) status = 'cancelled';
+            else if (statusLower.includes('process')) status = 'processing';
+            else if (statusLower.includes('prepar')) status = 'preparing';
+            else if (statusLower.includes('deliver')) status = 'delivered';
+            else if (statusLower.includes('pending')) status = 'pending';
+            else if (statusText && !/^\d/.test(statusText)) status = statusText;
+
+            return { longOrderId, shortOrderId, status };
+          }, i);
+
+          if (!rowData) {
+            logger.order(`Could not extract row data for index ${i}`);
+            continue;
+          }
+
+          const drawerOpened = await this.clickOrderRowAndWait(i);
+
+          let driverStatus = '';
+          if (drawerOpened) {
+            await sleep(1000);
+            driverStatus = await this.page.evaluate(() => {
+              const driverStateEl = document.querySelector('[data-testid="driverState"]');
+              return driverStateEl ? driverStateEl.textContent.trim() : '';
+            });
+            await this.closeOrderDrawer();
+            await sleep(500);
+          } else {
+            logger.order(`Drawer did not open for order ${rowData.shortOrderId}`);
+          }
+
+          results.push({
+            orderNumber: rowData.shortOrderId,
+            longOrderId: rowData.longOrderId,
+            status: rowData.status,
+            driverStatus,
+          });
+
+          await sleep(300);
+
+        } catch (error) {
+          if (error.message && error.message.includes('detached')) {
+            logger.order(`Frame detached during state extraction, returning current results`);
+            break;
+          }
+          logger.error(`Failed to extract state for row ${i}:`, error.message);
+          try {
+            await this.closeOrderDrawer();
+          } catch (e) {}
+          await sleep(500);
+        }
+      }
+
+      logger.order(`Extracted state for ${results.length} orders`);
+      return results;
+    } catch (error) {
+      logger.error('Failed to extract orders for state update:', error);
+      throw error;
+    }
+  }
+
   filterNewOrders(orders) {
     if (!this.lastPollTime) {
       logger.order('First poll - fetching all historical orders');
