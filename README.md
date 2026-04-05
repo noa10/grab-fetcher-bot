@@ -245,6 +245,44 @@ pm2 stop all
 pm2 info grab-fetcher
 ```
 
+#### Platform-Specific Setup
+
+<details>
+<summary><strong>Ubuntu ARM64 (Oracle Cloud, AWS Graviton, Raspberry Pi)</strong></summary>
+
+Puppeteer's automatic Chrome download provides an x86_64 binary, which is incompatible with ARM64 machines. You'll need to install Chromium separately and point Puppeteer to it.
+
+**1. Install Chromium and Xvfb:**
+```bash
+sudo apt update
+sudo snap install chromium
+sudo apt install xvfb
+```
+
+**2. Configure the executable path in your `.env`:**
+```env
+PUPPETEER_EXECUTABLE_PATH=/snap/chromium/current/usr/lib/chromium-browser/chrome
+```
+
+> **Note:** The path may vary depending on your distribution. Run `which chromium-browser` or `which chromium` to find the correct path.
+
+**3. Run with xvfb-run (for non-PM2 usage):**
+```bash
+xvfb-run -a --server-args="-screen 0 1280x1024x24" npm start
+```
+
+PM2 manages this automatically if you set `xvfb-run -a` in the `exec_interpreter` of `ecosystem.config.js`, or use a wrapper script.
+
+**4. Alternative: Install Chromium via apt (some distros):**
+```bash
+# Ubuntu 24.04+ on ARM64 may have chromium in the repos
+sudo apt install chromium-browser
+# Then set in .env:
+# PUPPETEER_EXECUTABLE_PATH=/usr/bin/chromium-browser
+```
+
+</details>
+
 #### Schedule Details
 
 - **Operating Hours:** 11:00 AM – 10:30 PM Malaysia Time (GMT+8), daily
