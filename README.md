@@ -28,18 +28,39 @@ A free, open-source automation tool designed to fetch order data from Grab Merch
 
 ## 🏗️ Architecture
 
+### Self-Hosted (Recommended)
+
 ```
 ┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
-│   Grab Portal   │◄───│ GitHub Actions   │───►│  MongoDB Atlas  │
-│  (Data Source)  │    │ (Fetch Workflow) │    │   (Storage)     │
+│   Grab Portal   │◄───│ Self-Hosted Bot  │───►│  MongoDB Atlas  │
+│  (Data Source)  │    │ (PM2 Managed)    │    │   (Storage)     │
 └─────────────────┘    └──────────────────┘    └─────────────────┘
-                              │
-                              ▼
-                       ┌──────────────────┐
-                       │     Vercel       │
-                       │  (API + UI)      │
-                       └──────────────────┘
+                               │
+                               ▼
+                        ┌──────────────────┐
+                        │   API Server     │
+                        │ (PM2 Managed)    │
+                        └──────────────────┘
 ```
+
+### Cloud (Legacy — GitHub Actions + Vercel)
+
+> This deployment model is deprecated due to GitHub Actions minute quota exhaustion.
+
+```
+┌─────────────────┐    ┌──────────────────┐    ┌─────────────────┐
+│   Grab Portal   │◄───│ Self-Hosted Bot  │───►│  MongoDB Atlas  │
+│  (Data Source)  │    │ (PM2 Managed)    │    │   (Storage)     │
+└─────────────────┘    └──────────────────┘    └─────────────────┘
+                               │
+                               ▼
+                        ┌──────────────────┐
+                        │   API Server     │
+                        │ (PM2 Managed)    │
+                        └──────────────────┘
+```
+
+### Cloud (Legacy — GitHub Actions + Vercel)
 
 ## 🚀 Quick Start
 
@@ -96,7 +117,7 @@ Open http://localhost:3000/login to sign in, then access the dashboard at http:/
 
 **Default credentials:** `admin` / `admin123` (change via `ADMIN_USERNAME` and `ADMIN_PASSWORD` environment variables)
 
-> When you're ready to automate the fetcher, continue with the [Deployment](#-deployment) steps to configure GitHub Actions and Vercel.
+> When you're ready to automate the fetcher, continue with the [Deployment](#-deployment) steps to configure self-hosted PM2 deployment on your own server.
 
 ## 🔐 Authentication
 
@@ -153,7 +174,110 @@ The dashboard has been completely redesigned with a modern UI/UX.
 
 ## 📦 Deployment
 
-### Step 1: Configure GitHub Actions Secrets
+### Self-Hosted Deployment (Recommended)
+
+This is the recommended deployment model. The bot runs as a persistent process on your own server (VPS, Raspberry Pi, or any always-on machine), managed by PM2. No GitHub Actions minute quota limits.
+
+#### Prerequisites
+
+- A Linux server (Ubuntu 20.04+ recommended) or macOS machine running 24/7
+- Node.js 18+ installed
+- PM2 installed globally: `npm i -g pm2`
+- MongoDB Atlas account (free tier)
+- Grab Merchant account with portal access
+
+#### Setup Steps
+
+1. **Clone the repository:**
+   ```bash
+   git clone https://github.com/your-username/grab-fetcher-bot.git
+   cd grab-fetcher-bot
+   npm ci
+   ```
+
+2. **Configure environment:**
+   ```bash
+   cp .env.example .env
+   ```
+   Edit `.env` with your credentials:
+   ```env
+   GRAB_USERNAME=your_grab_merchant_email@example.com
+   GRAB_PASSWORD=your_grab_merchant_password
+   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/grab-orders
+   POLLING_INTERVAL_MINUTES=5
+   ADMIN_USERNAME=admin
+   ADMIN_PASSWORD=your_secure_password
+   SESSION_SECRET=a_random_secret_string_change_this
+   ```
+
+3. **Start with PM2:**
+   ```bash
+   pm2 start ecosystem.config.js
+   pm2 save
+   ```
+
+4. **Enable auto-start on boot:**
+   ```bash
+   pm2 startup
+   ```
+   Follow the printed instructions to complete the setup.
+
+#### PM2 Management Commands
+
+```bash
+# View running processes
+pm2 status
+
+# View logs
+pm2 logs grab-fetcher
+pm2 logs grab-api
+
+# Real-time monitoring
+pm2 monit
+
+# Restart a service
+pm2 restart grab-fetcher
+
+# Stop all services
+pm2 stop all
+
+# View process details
+pm2 info grab-fetcher
+```
+
+#### Schedule Details
+
+- **Operating Hours:** 11:00 AM – 10:30 PM Malaysia Time (GMT+8), daily
+- **Polling Frequency:** Every 5 minutes during active period
+- **Executions per day:** ~138 runs
+- **Timezone:** MYT is calculated from UTC in-code, so the server's local timezone does not matter
+
+#### Optional: Nginx Reverse Proxy
+
+If you want the API accessible on port 80/443 with HTTPS:
+
+```nginx
+server {
+    listen 80;
+    server_name your-domain.com;
+
+    location / {
+        proxy_pass http://localhost:63173;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection 'upgrade';
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_cache_bypass $http_upgrade;
+    }
+}
+```
+
+### Cloud Deployment (Legacy — Deprecated)
+
+> The GitHub Actions + Vercel deployment model is deprecated. Running the fetcher on GitHub Actions at 5-minute intervals during operating hours uses ~12,500 minutes/month, which exceeds the free tier limit of 2,000 minutes/month.
+
+#### Step 1: Configure GitHub Actions Secrets
 
 1. **Fork this repository** to your GitHub account.
 2. **Add repository secrets** at `Settings → Secrets and variables → Actions`:
@@ -164,7 +288,7 @@ The dashboard has been completely redesigned with a modern UI/UX.
    ```
 3. Keep credentials out of commits; only store them as secrets.
 
-### Step 2: Deploy API and Dashboard to Vercel
+#### Step 2: Deploy API and Dashboard to Vercel
 
 1. Go to [vercel.com](https://vercel.com) → **New Project** → import your GitHub repository.
 2. Use the **Other** framework preset and leave build/output commands empty.
@@ -194,6 +318,12 @@ npm start
 
 # Start the API server (in another terminal)
 npm run server
+```
+
+Or use PM2 for local development (manages both processes):
+
+```bash
+pm2 start ecosystem.config.js
 ```
 
 ## 📊 API Endpoints
@@ -254,7 +384,7 @@ The `/api/orders` endpoint supports these query parameters:
 | `ADMIN_USERNAME` | Dashboard admin username | `admin` |
 | `ADMIN_PASSWORD` | Dashboard admin password | `admin123` |
 | `SESSION_SECRET` | Session encryption key | `grab-fetcher-secret-change-in-production` |
-| `POLLING_INTERVAL_MINUTES` | Polling frequency | 2 |
+| `POLLING_INTERVAL_MINUTES` | Polling frequency | 5 |
 | `HEADLESS_MODE` | Run browser in headless mode | true |
 | `SCREENSHOT_ENABLED` | Enable screenshot capture | true |
 | `MAX_RETRIES` | Max retry attempts | 3 |
@@ -379,7 +509,26 @@ Check logs in the `logs/` directory:
 
 ## 📈 Monitoring
 
-### GitHub Actions Workflow
+### Self-Hosted (PM2)
+
+```bash
+# Check process status
+pm2 status
+
+# Real-time logs
+pm2 logs --lines 100
+
+# Resource monitoring
+pm2 monit
+```
+
+Log files are also written to `logs/`:
+- `combined.log` — All application logs
+- `error.log` — Error logs only
+- `pm2-out.log` — PM2 stdout
+- `pm2-error.log` — PM2 stderr
+
+### GitHub Actions Workflow (Legacy)
 
 - Check the **Actions** tab for the "Fetch Grab Orders" workflow runs.
 - Expand each run to inspect browser automation logs and download uploaded artifacts.
@@ -394,16 +543,15 @@ Check logs in the `logs/` directory:
 
 ```bash
 # Check system health
-curl http://localhost:3000/health
+curl http://localhost:63173/health
 
 # Check order statistics
-curl http://localhost:3000/api/orders/stats
+curl http://localhost:63173/api/orders/stats
 ```
 
 ### Performance Metrics
 
-- Polling cycle time: ~1 minute GitHub Actions job
-- GitHub Actions usage: ~720 minutes/month at 2-minute cadence (within free tier)
+- Polling cycle time: ~1-2 minutes per run (self-hosted, persistent browser)
 - Vercel function invocations: Light API usage within Hobby plan limits
 - Storage: MongoDB Atlas free tier (512MB)
 

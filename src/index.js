@@ -59,6 +59,21 @@ class GrabOrderFetcher {
   }
 
   /**
+   * Check if we are within operating hours (11:00 AM - 10:30 PM MYT / GMT+8)
+   */
+  isWithinOperatingHours() {
+    const now = new Date();
+    const utcHours = now.getUTCHours();
+    const utcMinutes = now.getUTCMinutes();
+    const mytTotalMinutes = ((utcHours + 8) % 24) * 60 + utcMinutes;
+    
+    const startMinutes = 11 * 60;
+    const endMinutes = 22 * 60 + 30;
+    
+    return mytTotalMinutes >= startMinutes && mytTotalMinutes <= endMinutes;
+  }
+
+  /**
    * Start the polling process
    */
   async startPolling() {
@@ -68,7 +83,7 @@ class GrabOrderFetcher {
         return;
       }
 
-      logger.bot(`Starting polling every ${this.pollingInterval} minutes...`);
+      logger.bot(`Starting polling every ${this.pollingInterval} minutes (11:00 AM - 10:30 PM MYT)...`);
       this.isRunning = true;
 
       // Set up cron job for polling
@@ -115,6 +130,10 @@ class GrabOrderFetcher {
    * Poll for new orders
    */
   async pollForOrders() {
+    if (!this.isWithinOperatingHours()) {
+      return;
+    }
+
     if (this.isPolling) {
       logger.bot('Poll cycle already running, skipping...');
       return;
