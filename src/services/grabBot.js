@@ -582,6 +582,46 @@ class GrabBot {
     }
   }
 
+  async logoutFromPortal() {
+    try {
+      logger.puppeteer('Logging out from Grab Merchant Portal...');
+
+      if (!this.isPageValid()) {
+        logger.puppeteer('Page is not valid, skipping logout');
+        return false;
+      }
+
+      await this.closePopups();
+
+      const settingsBtn = await this.page.$('button.dui-btn.dui-btn-circle.dui-btn-default.dui-btn-icon-only');
+      if (settingsBtn) {
+        await settingsBtn.click();
+        logger.puppeteer('Settings dropdown opened');
+        await sleep(1000);
+
+        const logoutBtn = await this.page.$('[data-testid="btnLogOut"]');
+        if (logoutBtn) {
+          await logoutBtn.click();
+          logger.puppeteer('Logout button clicked');
+          await sleep(3000);
+          this.isLoggedIn = false;
+          this.lastActivity = null;
+          logger.puppeteer('Logged out from Grab Merchant Portal successfully');
+          return true;
+        } else {
+          logger.puppeteer('Logout button not found in settings dropdown');
+        }
+      } else {
+        logger.puppeteer('Settings button not found in sidebar');
+      }
+
+      return false;
+    } catch (error) {
+      logger.error('Failed to logout from portal:', error);
+      return false;
+    }
+  }
+
   async refreshSession() {
     try {
       if (!this.page) {
