@@ -176,17 +176,23 @@ The dashboard has been completely redesigned with a modern UI/UX.
 
 ### Self-Hosted Deployment (Recommended)
 
-This is the recommended deployment model. The bot runs as a persistent process on your own server (VPS, Raspberry Pi, or any always-on machine), managed by PM2. No GitHub Actions minute quota limits.
+This is the recommended deployment model. The bot runs as a persistent process on your own server (VPS, Raspberry Pi, or any always-on machine). No GitHub Actions minute quota limits.
+
+Two deployment approaches are available:
+
+- **Option A: PM2** - Best for servers that also run the API dashboard (keeps both processes managed together)
+- **Option B: systemd** - Best for resource-constrained machines; the fetcher runs as an on-demand timer that starts, fetches, and exits (like GitHub Actions but local)
 
 #### Prerequisites
 
 - A Linux server (Ubuntu 20.04+ recommended) or macOS machine running 24/7
 - Node.js 18+ installed
-- PM2 installed globally: `npm i -g pm2`
+- PM2 installed globally: `npm i -g pm2` (for Option A) **or** systemd available (for Option B, default on most Linux distros)
 - MongoDB Atlas account (free tier)
 - Grab Merchant account with portal access
+- **ARM64 servers only**: See [Platform-Specific Setup](#platform-specific-setup) below for Chromium setup instructions
 
-#### Setup Steps
+#### Shared Setup (Both Options)
 
 1. **Clone the repository:**
    ```bash
@@ -202,13 +208,17 @@ This is the recommended deployment model. The bot runs as a persistent process o
    Edit `.env` with your credentials:
    ```env
    GRAB_USERNAME=your_grab_merchant_email@example.com
-   GRAB_PASSWORD=your_grab_merchant_password
-   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/grab-orders
+   GRAB_PASSWORD=your_g...word
+   MONGODB_URI=mongodb+srv://<username>:***@<cluster>.mongodb.net/grab-orders
    POLLING_INTERVAL_MINUTES=5
    ADMIN_USERNAME=admin
-   ADMIN_PASSWORD=your_secure_password
-   SESSION_SECRET=a_random_secret_string_change_this
+   ADMIN_PASSWORD=your_s...word
+   SESSION_SECRET=a_rand...this
    ```
+
+---
+
+#### Option A: PM2 Deployment (Persistent Process)
 
 3. **Start with PM2:**
    ```bash
@@ -245,7 +255,70 @@ pm2 stop all
 pm2 info grab-fetcher
 ```
 
-#### Platform-Specific Setup
+#### Option B: systemd Timer Deployment (On-Demand)
+
+This approach runs the fetcher as a systemd timer that starts the bot on a schedule, lets it fetch orders, then exits. It's more resource-efficient than keeping a process running 24/7, and mirrors the GitHub Actions workflow but on your local machine.
+
+**3. Create the service unit:**
+
+Replace `/path/to/grab-fetcher-bot` with your actual project directory.
+
+```bash
+sudo tee /etc/systemd/system/grab-fetcher.service > /dev/null << 'EOF'
+[Unit]
+Description=Grab Order Fetcher Bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+WorkingDirectory=/path/to/grab-fetcher-bot
+# Use xvfb-run on headless servers for Chromium
+ExecStart=/usr/bin/xvfb-run -a --server-args="-screen 0 1280x1024x24" node src/github-actions-runner.js
+# Or without xvfb if you have a display:
+# ExecStart=node src/github-actions-runner.js
+EnvironmentFile=/path/to/grab-fetcher-bot/.env
+TimeoutStartSec=120
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
+EOF
+```
+
+**4. Create the timer unit:**
+```bash
+sudo tee /etc/systemd/system/grab-fetcher.timer > /dev/null << 'EOF'
+[Unit]
+Description=Run Grab Order Fetcher every 5 minutes during operating hours
+Requires=grab-fetcher.service
+
+[Timer]
+OnCalendar=*-*-* 03:05..14:35:00/5
+RandomizedDelaySec=30
+Persistent=false
+
+[Install]
+WantedBy=timers.target
+EOF
+```
+> **Note:** The `OnCalendar` schedule above is in UTC for Malaysia Time (MYT, UTC+8): `03:00..14:30 UTC = 11:00 AM..10:30 PM MYT`. Adjust the hours to match your local timezone if different.
+
+**5. Enable and start:**
+```bash
+sudo systemctl daemon-reload
+sudo systemctl enable grab-fetcher.timer
+sudo systemctl start grab-fetcher.timer
+```
+
+**6. Verify:**
+```bash
+systemctl status grab-fetcher.timer
+journalctl -u grab-fetcher -f
+```
+
+#### PM2 Management Commands
 
 <details>
 <summary><strong>Ubuntu ARM64 (Oracle Cloud, AWS Graviton, Raspberry Pi)</strong></summary>
