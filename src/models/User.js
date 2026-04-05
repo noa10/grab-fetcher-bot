@@ -12,7 +12,8 @@ const userSchema = new mongoose.Schema({
   },
   password: {
     type: String,
-    required: true
+    required: [true, 'Password is required'],
+    minlength: [8, 'Password must be at least 8 characters']
   },
   role: {
     type: String,
@@ -20,6 +21,9 @@ const userSchema = new mongoose.Schema({
     default: 'admin'
   },
   lastLogin: {
+    type: Date
+  },
+  passwordChangedAt: {
     type: Date
   },
   isActive: {
@@ -33,6 +37,9 @@ const userSchema = new mongoose.Schema({
 
 userSchema.pre('save', async function(next) {
   if (!this.isModified('password')) return next();
+  if (this.isModified('password') && !this.isNew) {
+    this.passwordChangedAt = new Date(Date.now() - 1000);
+  }
   try {
     const salt = await bcrypt.genSalt(10);
     this.password = await bcrypt.hash(this.password, salt);

@@ -93,7 +93,7 @@ GRAB_USERNAME=your_grab_merchant_email@example.com
 GRAB_PASSWORD=your_grab_merchant_password
 
 # MongoDB Configuration
-MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/grab-orders
+MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/grab-orders
 
 # Bot Configuration (optional)
 POLLING_INTERVAL_MINUTES=2
@@ -203,7 +203,7 @@ This is the recommended deployment model. The bot runs as a persistent process o
    ```env
    GRAB_USERNAME=your_grab_merchant_email@example.com
    GRAB_PASSWORD=your_grab_merchant_password
-   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/grab-orders
+   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/grab-orders
    POLLING_INTERVAL_MINUTES=5
    ADMIN_USERNAME=admin
    ADMIN_PASSWORD=your_secure_password
@@ -284,7 +284,7 @@ server {
    ```
    GRAB_USERNAME=your_grab_merchant_email@example.com
    GRAB_PASSWORD=your_grab_merchant_password
-   MONGODB_URI=mongodb+srv://username:password@cluster.mongodb.net/grab-orders
+   MONGODB_URI=mongodb+srv://<username>:<password>@<cluster>.mongodb.net/grab-orders
    ```
 3. Keep credentials out of commits; only store them as secrets.
 

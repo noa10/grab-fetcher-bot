@@ -1,12 +1,21 @@
 const express = require('express');
+const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const Order = require('../../models/Order');
+const { sanitizeSortField, sanitizeSortOrder, buildSafeRegexQuery, sanitizeCsvField } = require('../../utils/inputSanitizer');
 const logger = require('../../utils/logger');
 
-/**
- * GET /api/orders
- * Get all orders with pagination and filtering
- */
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 100,
+  message: { success: false, message: 'Too many requests. Try again in a minute.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  keyGenerator: (req) => req.session?.userId || req.ip
+});
+
+router.use(apiLimiter);
+
 router.get('/', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
@@ -21,6 +30,9 @@ router.get('/', async (req, res) => {
     
     if (req.query.date) {
       const date = new Date(req.query.date);
+      if (isNaN(date.getTime())) {
+        throw new Error('Invalid date format');
+      }
       const nextDay = new Date(date);
       nextDay.setDate(date.getDate() + 1);
       filter.orderTimestamp = { $gte: date, $lt: nextDay };
@@ -28,9 +40,14 @@ router.get('/', async (req, res) => {
 
     if (req.query.startDate || req.query.endDate) {
       const dateFilter = {};
-      if (req.query.startDate) dateFilter.$gte = new Date(req.query.startDate);
+      if (req.query.startDate) {
+        const startDate = new Date(req.query.startDate);
+        if (isNaN(startDate.getTime())) throw new Error('Invalid start date');
+        dateFilter.$gte = startDate;
+      }
       if (req.query.endDate) {
         const endDate = new Date(req.query.endDate);
+        if (isNaN(endDate.getTime())) throw new Error('Invalid end date');
         endDate.setHours(23, 59, 59, 999);
         dateFilter.$lte = endDate;
       }
@@ -42,15 +59,15 @@ router.get('/', async (req, res) => {
     }
 
     if (req.query.restaurant) {
-      filter['orderDetails.restaurantName'] = { $regex: req.query.restaurant, $options: 'i' };
+      filter['orderDetails.restaurantName'] = buildSafeRegexQuery(req.query.restaurant);
     }
 
     if (req.query.driver) {
-      filter.driverName = { $regex: req.query.driver, $options: 'i' };
+      filter.driverName = buildSafeRegexQuery(req.query.driver);
     }
 
     if (req.query.customer) {
-      filter.customerName = { $regex: req.query.customer, $options: 'i' };
+      filter.customerName = buildSafeRegexQuery(req.query.customer);
     }
 
     if (req.query.hasErrors !== undefined) {
@@ -62,24 +79,27 @@ router.get('/', async (req, res) => {
     }
 
     if (req.query.search) {
-      filter.$or = [
-        { orderNumber: { $regex: req.query.search, $options: 'i' } },
-        { customerName: { $regex: req.query.search, $options: 'i' } },
-        { driverName: { $regex: req.query.search, $options: 'i' } },
-        { 'orderDetails.restaurantName': { $regex: req.query.search, $options: 'i' } },
-        { bookingId: { $regex: req.query.search, $options: 'i' } }
-      ];
+      const safeRegex = buildSafeRegexQuery(req.query.search);
+      if (Object.keys(safeRegex).length > 0) {
+        filter.$or = [
+          { orderNumber: safeRegex },
+          { customerName: safeRegex },
+          { driverName: safeRegex },
+          { 'orderDetails.restaurantName': safeRegex },
+          { bookingId: safeRegex }
+        ];
+      }
     }
 
-    const sortField = req.query.sortBy || 'orderTimestamp';
-    const sortOrder = req.query.sortOrder === 'asc' ? 1 : -1;
+    const sortField = sanitizeSortField(req.query.sortBy);
+    const sortOrder = sanitizeSortOrder(req.query.sortOrder);
     const sortOptions = {};
     
-    if (sortField === 'total') sortOptions['pricing.total'] = sortOrder;
-    else if (sortField === 'customer') sortOptions.customerName = sortOrder;
-    else if (sortField === 'driver') sortOptions.driverName = sortOrder;
-    else if (sortField === 'status') { sortOptions.status = sortOrder; sortOptions.orderTimestamp = -1; }
-    else sortOptions.orderTimestamp = sortOrder;
+    if (sortField === 'total') sortOptions['pricing.total'] = sortOrder === 'asc' ? 1 : -1;
+    else if (sortField === 'customer') sortOptions.customerName = sortOrder === 'asc' ? 1 : -1;
+    else if (sortField === 'driver') sortOptions.driverName = sortOrder === 'asc' ? 1 : -1;
+    else if (sortField === 'status') { sortOptions.status = sortOrder === 'asc' ? 1 : -1; sortOptions.orderTimestamp = -1; }
+    else sortOptions.orderTimestamp = sortOrder === 'asc' ? 1 : -1;
 
     const [orders, total, filterOptions] = await Promise.all([
       Order.find(filter).sort(sortOptions).skip(skip).limit(limit).lean(),
@@ -126,14 +146,10 @@ router.get('/', async (req, res) => {
 
   } catch (error) {
     logger.error('Error fetching orders:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch orders', message: error.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch orders', message: 'Internal server error' });
   }
 });
 
-/**
- * GET /api/orders/recent
- * Get recent orders (last 24 hours by default)
- */
 router.get('/recent', async (req, res) => {
   try {
     const hours = parseInt(req.query.hours) || 24;
@@ -159,14 +175,10 @@ router.get('/recent', async (req, res) => {
 
   } catch (error) {
     logger.error('Error fetching recent orders:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch recent orders', message: error.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch recent orders', message: 'Internal server error' });
   }
 });
 
-/**
- * GET /api/orders/stats
- * Get order statistics
- */
 router.get('/stats', async (req, res) => {
   try {
     const today = new Date();
@@ -279,14 +291,10 @@ router.get('/stats', async (req, res) => {
 
   } catch (error) {
     logger.error('Error fetching order stats:', error);
-    res.status(500).json({ success: false, error: 'Failed to fetch order statistics', message: error.message });
+    res.status(500).json({ success: false, error: 'Failed to fetch order statistics', message: 'Internal server error' });
   }
 });
 
-/**
- * GET /api/orders/:id
- * Get a specific order by ID
- */
 router.get('/:id', async (req, res) => {
   try {
     const order = await Order.findById(req.params.id).lean();
@@ -303,10 +311,6 @@ router.get('/:id', async (req, res) => {
   }
 });
 
-/**
- * GET /api/orders/number/:orderNumber
- * Get a specific order by order number
- */
 router.get('/number/:orderNumber', async (req, res) => {
   try {
     const order = await Order.findByOrderNumber(req.params.orderNumber).lean();
@@ -323,21 +327,22 @@ router.get('/number/:orderNumber', async (req, res) => {
   }
 });
 
-/**
- * GET /api/orders/search/:query
- * Search orders by customer name, order number, or other fields
- */
 router.get('/search/:query', async (req, res) => {
   try {
     const query = req.params.query;
     const limit = parseInt(req.query.limit) || 20;
+    const safeRegex = buildSafeRegexQuery(query);
+
+    if (Object.keys(safeRegex).length === 0) {
+      return res.json({ orders: [], query, count: 0 });
+    }
 
     const searchFilter = {
       $or: [
-        { orderNumber: { $regex: query, $options: 'i' } },
-        { customerName: { $regex: query, $options: 'i' } },
-        { driverName: { $regex: query, $options: 'i' } },
-        { 'orderDetails.restaurantName': { $regex: query, $options: 'i' } }
+        { orderNumber: safeRegex },
+        { customerName: safeRegex },
+        { driverName: safeRegex },
+        { 'orderDetails.restaurantName': safeRegex }
       ]
     };
 
@@ -358,16 +363,11 @@ router.get('/search/:query', async (req, res) => {
   }
 });
 
-/**
- * PUT /api/orders/:id
- * Update an order (limited fields)
- */
 router.put('/:id', async (req, res) => {
   try {
     const allowedUpdates = ['status', 'driverName', 'deliveryInfo.actualDeliveryTime'];
     const updates = {};
 
-    // Only allow specific fields to be updated
     for (const field of allowedUpdates) {
       if (req.body[field] !== undefined) {
         updates[field] = req.body[field];
@@ -397,10 +397,6 @@ router.put('/:id', async (req, res) => {
   }
 });
 
-/**
- * DELETE /api/orders/:id
- * Delete an order (soft delete by marking as cancelled)
- */
 router.delete('/:id', async (req, res) => {
   try {
     const order = await Order.findByIdAndUpdate(
@@ -425,16 +421,17 @@ router.delete('/:id', async (req, res) => {
   }
 });
 
-/**
- * GET /api/orders/export/csv
- * Export orders as CSV
- */
 router.get('/export/csv', async (req, res) => {
   try {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.startDate && req.query.endDate) {
-      filter.orderTimestamp = { $gte: new Date(req.query.startDate), $lte: new Date(req.query.endDate) };
+      const startDate = new Date(req.query.startDate);
+      const endDate = new Date(req.query.endDate);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error('Invalid date format');
+      }
+      filter.orderTimestamp = { $gte: startDate, $lte: endDate };
     } else if (req.query.days) {
       const days = parseInt(req.query.days);
       filter.orderTimestamp = { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) };
@@ -452,15 +449,18 @@ router.get('/export/csv', async (req, res) => {
     ];
 
     const csvRows = orders.map(order => [
-      order.orderNumber || '', order.bookingId || '', order.customerName || '',
-      order.customerPhone || '', order.customerNote || '', order.driverName || '',
+      order.orderNumber || '', order.bookingId || '',
+      sanitizeCsvField(order.customerName || ''),
+      order.customerPhone || '', sanitizeCsvField(order.customerNote || ''),
+      sanitizeCsvField(order.driverName || ''),
       order.driverPhone || '', order.driverStatus || '',
-      order.orderDetails?.restaurantName || '', order.orderDetails?.orderType || '',
+      sanitizeCsvField(order.orderDetails?.restaurantName || ''),
+      order.orderDetails?.orderType || '',
       order.status || '', order.pricing?.subtotal || 0, order.pricing?.deliveryFee || 0,
       order.pricing?.serviceFee || 0, order.pricing?.tax || 0, order.pricing?.discount || 0,
       order.pricing?.discountCode || '', order.pricing?.total || 0,
       order.pricing?.currency || 'MYR', order.orderTimestamp ? new Date(order.orderTimestamp).toISOString() : '',
-      order.deliveryTime || '', order.deliveryInfo?.address || '',
+      order.deliveryTime || '', sanitizeCsvField(order.deliveryInfo?.address || ''),
       order.deliveryInfo?.estimatedDeliveryTime ? new Date(order.deliveryInfo.estimatedDeliveryTime).toISOString() : '',
       order.deliveryInfo?.actualDeliveryTime ? new Date(order.deliveryInfo.actualDeliveryTime).toISOString() : '',
       order.fetchedAt ? new Date(order.fetchedAt).toISOString() : '',
@@ -481,7 +481,7 @@ router.get('/export/csv', async (req, res) => {
 
   } catch (error) {
     logger.error('Error exporting CSV:', error);
-    res.status(500).json({ error: 'Failed to export CSV' });
+    res.status(500).json({ error: 'Failed to export CSV', message: 'Internal server error' });
   }
 });
 
@@ -490,7 +490,12 @@ router.get('/export/json', async (req, res) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.startDate && req.query.endDate) {
-      filter.orderTimestamp = { $gte: new Date(req.query.startDate), $lte: new Date(req.query.endDate) };
+      const startDate = new Date(req.query.startDate);
+      const endDate = new Date(req.query.endDate);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error('Invalid date format');
+      }
+      filter.orderTimestamp = { $gte: startDate, $lte: endDate };
     } else if (req.query.days) {
       const days = parseInt(req.query.days);
       filter.orderTimestamp = { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) };
@@ -509,35 +514,7 @@ router.get('/export/json', async (req, res) => {
 
   } catch (error) {
     logger.error('Error exporting JSON:', error);
-    res.status(500).json({ error: 'Failed to export JSON' });
-  }
-});
-
-router.get('/export/json', async (req, res) => {
-  try {
-    const filter = {};
-    if (req.query.status) filter.status = req.query.status;
-    if (req.query.startDate && req.query.endDate) {
-      filter.orderTimestamp = { $gte: new Date(req.query.startDate), $lte: new Date(req.query.endDate) };
-    } else if (req.query.days) {
-      const days = parseInt(req.query.days);
-      filter.orderTimestamp = { $gte: new Date(Date.now() - days * 24 * 60 * 60 * 1000) };
-    }
-
-    const limit = Math.min(parseInt(req.query.limit) || 5000, 5000);
-    const orders = await Order.find(filter).sort({ orderTimestamp: -1 }).limit(limit).lean();
-
-    res.json({
-      success: true,
-      data: orders,
-      meta: { format: 'json', count: orders.length, exportedAt: new Date().toISOString() }
-    });
-
-    logger.export(`JSON export generated: ${orders.length} orders`);
-
-  } catch (error) {
-    logger.error('Error exporting JSON:', error);
-    res.status(500).json({ error: 'Failed to export JSON' });
+    res.status(500).json({ error: 'Failed to export JSON', message: 'Internal server error' });
   }
 });
 

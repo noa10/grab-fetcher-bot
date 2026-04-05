@@ -28,7 +28,7 @@ const passwordResetSchema = new mongoose.Schema({
 });
 
 passwordResetSchema.statics.createToken = async function(username) {
-  const token = crypto.randomBytes(4).toString('hex').toUpperCase();
+  const token = crypto.randomBytes(32).toString('hex');
   const expiresAt = new Date(Date.now() + 15 * 60 * 1000);
 
   await this.deleteMany({ username, used: false });
