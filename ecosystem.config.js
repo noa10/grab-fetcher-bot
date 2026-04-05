@@ -1,3 +1,10 @@
+const fs = require('fs');
+
+// Load env vars like PUPPETEER_EXECUTABLE_PATH from .env for pm2
+if (fs.existsSync('.env')) {
+  require('dotenv').config({ path: '.env' });
+}
+
 module.exports = {
   apps: [
     {
