@@ -5,9 +5,15 @@ const orderSchema = new mongoose.Schema({
   orderNumber: {
     type: String,
     required: true,
-    unique: true,
     index: true,
     trim: true
+  },
+
+  // Date portion of orderTimestamp for dedup (Grab reuses order numbers across dates)
+  orderDate: {
+    type: Date,
+    required: true,
+    index: true
   },
 
   longOrderId: {
@@ -217,6 +223,9 @@ orderSchema.index({ status: 1 });
 orderSchema.index({ 'pricing.total': -1 });
 orderSchema.index({ createdAt: -1 });
 
+// Compound unique index: Grab reuses order numbers across dates
+orderSchema.index({ orderNumber: 1, orderDate: 1 }, { unique: true });
+
 // Virtual for order age
 orderSchema.virtual('orderAge').get(function() {
   return Date.now() - this.orderTimestamp.getTime();
@@ -228,14 +237,26 @@ orderSchema.virtual('processingTime').get(function() {
 });
 
 // Pre-save middleware to update lastUpdated
-orderSchema.pre('save', function(next) {
+orderSchema.pre('save', async function() {
   this.lastUpdated = new Date();
-  next();
 });
+
+// Helper: get date-only (midnight UTC) from a timestamp
+orderSchema.statics.toOrderDate = function(timestamp) {
+  const d = timestamp instanceof Date ? new Date(timestamp) : new Date(timestamp || Date.now());
+  d.setUTCHours(0, 0, 0, 0);
+  return d;
+};
 
 // Static methods
 orderSchema.statics.findByOrderNumber = function(orderNumber) {
   return this.findOne({ orderNumber: orderNumber });
+};
+
+// Find order by orderNumber + orderDate (for dedup with reused order numbers)
+orderSchema.statics.findByOrderNumberAndDate = function(orderNumber, orderTimestamp) {
+  const orderDate = this.toOrderDate(orderTimestamp);
+  return this.findOne({ orderNumber, orderDate });
 };
 
 orderSchema.statics.findRecentOrders = function(hours = 24) {
