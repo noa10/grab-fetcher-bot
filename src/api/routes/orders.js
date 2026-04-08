@@ -198,8 +198,9 @@ router.get('/stats', async (req, res) => {
       Order.aggregate([
         { $group: { _id: null, totalOrders: { $sum: 1 }, totalRevenue: { $sum: '$pricing.total' }, avgOrderValue: { $avg: '$pricing.total' }, maxOrderValue: { $max: '$pricing.total' }, minOrderValue: { $min: '$pricing.total' }, currency: { $first: '$pricing.currency' } } }
       ]),
+      // Today stats based on fetchedAt (orders fetched today, regardless of order date)
       Order.aggregate([
-        { $match: { orderTimestamp: { $gte: today, $lt: tomorrow } } },
+        { $match: { fetchedAt: { $gte: today, $lt: tomorrow } } },
         { $group: { _id: null, todayOrders: { $sum: 1 }, todayRevenue: { $sum: '$pricing.total' }, todayAvgOrderValue: { $avg: '$pricing.total' } } }
       ]),
       Order.aggregate([
@@ -214,9 +215,10 @@ router.get('/stats', async (req, res) => {
         { $group: { _id: '$status', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { count: -1 } }
       ]),
+      // Recent activity based on fetchedAt (shows orders collected per day)
       Order.aggregate([
-        { $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
-        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$orderTimestamp' } }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
+        { $match: { fetchedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
+        { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$fetchedAt' } }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { _id: 1 } }
       ]),
       Order.aggregate([
@@ -239,9 +241,10 @@ router.get('/stats', async (req, res) => {
         { $group: { _id: '$status', revenue: { $sum: '$pricing.total' }, count: { $sum: 1 } } },
         { $sort: { revenue: -1 } }
       ]),
+      // Hourly distribution based on fetchedAt
       Order.aggregate([
-        { $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
-        { $group: { _id: { $hour: '$orderTimestamp' }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
+        { $match: { fetchedAt: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
+        { $group: { _id: { $hour: '$fetchedAt' }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { _id: 1 } }
       ]),
       Order.aggregate([

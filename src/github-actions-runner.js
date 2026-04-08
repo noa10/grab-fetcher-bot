@@ -143,7 +143,9 @@ class GitHubActionsRunner {
       let registeredCount = 0;
 
       for (const update of stateUpdates) {
-        const existingOrder = await Order.findByOrderNumber(update.orderNumber);
+        // Find order by orderNumber + today's date (Grab reuses order numbers across dates)
+        const todayDate = Order.toOrderDate(new Date());
+        const existingOrder = await Order.findOne({ orderNumber: update.orderNumber, orderDate: todayDate });
 
         if (existingOrder) {
           const needsUpdate = update.driverStatus && existingOrder.driverStatus !== update.driverStatus
@@ -164,20 +166,22 @@ class GitHubActionsRunner {
           updateFields.status = update.status;
 
           await Order.updateOne(
-            { orderNumber: update.orderNumber },
+            { orderNumber: update.orderNumber, orderDate: todayDate },
             { $set: updateFields }
           );
 
           updatedCount++;
         } else if (update.status !== 'unknown' && update.orderNumber) {
+          const orderTimestamp = new Date();
           const order = new Order({
             orderNumber: update.orderNumber,
             longOrderId: update.longOrderId || '',
+            orderDate: Order.toOrderDate(orderTimestamp),
             customerName: 'Customer',
             driverName: 'Pending',
             driverStatus: update.driverStatus,
             status: update.status,
-            orderTimestamp: new Date(),
+            orderTimestamp,
             pricing: {
               subtotal: 0,
               deliveryFee: 0,
@@ -234,10 +238,13 @@ class GitHubActionsRunner {
     try {
       logger.order(`Processing order: ${orderData.orderNumber}`);
 
-      // Check if order already exists
-      const existingOrder = await Order.findByOrderNumber(orderData.orderNumber);
+      // Set orderDate for dedup (Grab reuses order numbers across dates)
+      orderData.orderDate = Order.toOrderDate(orderData.orderTimestamp);
+
+      // Check if order already exists for this date
+      const existingOrder = await Order.findByOrderNumberAndDate(orderData.orderNumber, orderData.orderTimestamp);
       if (existingOrder) {
-        logger.order(`Order ${orderData.orderNumber} already exists, skipping`);
+        logger.order(`Order ${orderData.orderNumber} already exists for this date, skipping`);
         return false;
       }
 
