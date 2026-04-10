@@ -11,7 +11,8 @@ const apiLimiter = rateLimit({
   message: { success: false, message: 'Too many requests. Try again in a minute.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.session?.userId || req.ip
+  keyGenerator: (req) => req.session?.userId || req.ip,
+  validate: false
 });
 
 router.use(apiLimiter);
