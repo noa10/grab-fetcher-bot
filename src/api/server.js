@@ -45,10 +45,10 @@ class ApiServer {
           directives: {
             defaultSrc: ["'self'"],
             scriptSrc: ["'self'", "'unsafe-inline'"],
-            styleSrc: ["'self'", "'unsafe-inline'"],
+            styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             imgSrc: ["'self'", "data:", "https:"],
             connectSrc: ["'self'"],
-            fontSrc: ["'self'"],
+            fontSrc: ["'self'", "https://fonts.gstatic.com"],
             objectSrc: ["'none'"],
             frameSrc: ["'none'"],
           }
@@ -66,7 +66,7 @@ class ApiServer {
         cookie: {
           secure: process.env.NODE_ENV === 'production',
           httpOnly: true,
-          sameSite: 'strict',
+          sameSite: 'lax',
           maxAge: 24 * 60 * 60 * 1000
         }
       }));

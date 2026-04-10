@@ -66,7 +66,8 @@ const loginLimiter = rateLimit({
   message: { success: false, message: 'Too many login attempts. Try again in 15 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip + ':' + (req.body.username || '')
+  keyGenerator: (req) => req.ip + ':' + (req.body.username || ''),
+  validate: false
 });
 
 const passwordResetLimiter = rateLimit({
@@ -75,7 +76,7 @@ const passwordResetLimiter = rateLimit({
   message: { success: false, message: 'Too many password reset requests. Try again in 1 hour.' },
   standardHeaders: true,
   legacyHeaders: false,
-  keyGenerator: (req) => req.ip
+  validate: false
 });
 
 router.get('/login', (req, res) => {
@@ -97,11 +98,13 @@ router.post('/login', loginLimiter, async (req, res) => {
 
     const user = await User.findOne({ username: username.toLowerCase(), isActive: true });
     if (!user) {
+      logger.error(`Login failed: user ${username} not found or inactive`);
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
     const isValid = await user.comparePassword(password);
     if (!isValid) {
+      logger.error(`Login failed: invalid password for user ${username}`);
       return res.status(401).json({ success: false, message: 'Invalid credentials' });
     }
 
