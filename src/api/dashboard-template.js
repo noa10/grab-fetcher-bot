@@ -807,6 +807,33 @@ function getDashboardHTML() {
         }
         .show-all-btn:hover { text-decoration: underline; }
 
+        .period-selector {
+            display: flex;
+            gap: 4px;
+            margin-left: 12px;
+            background: var(--bg-primary);
+            padding: 2px;
+            border-radius: var(--radius-sm);
+            border: 1px solid var(--border-color);
+        }
+        .period-btn {
+            padding: 4px 10px;
+            font-size: 11px;
+            font-weight: 600;
+            border-radius: 6px;
+            border: none;
+            background: transparent;
+            color: var(--text-secondary);
+            cursor: pointer;
+            transition: all 0.15s ease;
+        }
+        .period-btn:hover { color: var(--text-primary); }
+        .period-btn.active {
+            background: var(--bg-secondary);
+            color: var(--grab-green);
+            box-shadow: var(--shadow-sm);
+        }
+
         @media (max-width: 1024px) {
             .charts-grid { grid-template-columns: 1fr; }
         }
@@ -993,6 +1020,11 @@ function getDashboardHTML() {
                         <span>Showing orders for: </span>
                         <span class="date-text" id="ordersDate"></span>
                         <span class="timezone">(MYT GMT+8)</span>
+                        <div class="period-selector">
+                            <button class="period-btn active" data-period="today">Today</button>
+                            <button class="period-btn" data-period="7d">7 Days</button>
+                            <button class="period-btn" data-period="30d">30 Days</button>
+                        </div>
                         <button class="show-all-btn" id="showAllOrders">Show All Orders</button>
                     </div>
 
@@ -1103,7 +1135,8 @@ function getDashboardHTML() {
             loading: false,
             summary: null,
             currentView: 'dashboard',
-            showAllOrders: false
+            showAllOrders: false,
+            activePeriod: 'today'
         };
 
         function getMalaysiaDate() {
@@ -1158,6 +1191,39 @@ function getDashboardHTML() {
             return \`\${Math.floor(diff / 86400)}d ago\`;
         }
 
+        function updatePeriodButtons() {
+            document.querySelectorAll('.period-btn').forEach(btn => {
+                btn.classList.toggle('active', btn.dataset.period === state.activePeriod);
+            });
+        }
+
+        function setPeriod(period) {
+            state.activePeriod = period;
+            const now = getMalaysiaDate();
+            let from = getMalaysiaDate();
+            const to = getMalaysiaDate();
+
+            if (period === '7d') {
+                from.setDate(now.getDate() - 6);
+            } else if (period === '30d') {
+                from.setDate(now.getDate() - 29);
+            }
+
+            const fromStr = getMalaysiaDateStr(from);
+            const toStr = getMalaysiaDateStr(to);
+
+            state.filters.dateFrom = fromStr;
+            state.filters.dateTo = toStr;
+            state.showAllOrders = false;
+            state.pagination.currentPage = 1;
+
+            document.getElementById('dateFrom').value = fromStr;
+            document.getElementById('dateTo').value = toStr;
+
+            updatePeriodButtons();
+            fetchOrders();
+        }
+
         function showToast(message) {
             const toast = document.getElementById('toast');
             document.getElementById('toastMessage').textContent = message;
@@ -1171,7 +1237,7 @@ function getDashboardHTML() {
             const dateStr = getMalaysiaDateStr(myt);
             document.getElementById('dashboardDate').textContent = formatted;
             document.getElementById('ordersDate').textContent = formatted;
-            if (!state.showAllOrders) {
+            if (!state.showAllOrders && state.activePeriod === 'today') {
                 document.getElementById('dateFrom').value = dateStr;
                 document.getElementById('dateTo').value = dateStr;
                 state.filters.dateFrom = dateStr;
@@ -1639,6 +1705,8 @@ function getDashboardHTML() {
             state.filters.dateFrom = document.getElementById('dateFrom').value;
             state.filters.dateTo = document.getElementById('dateTo').value;
             state.pagination.currentPage = 1;
+            state.activePeriod = null;
+            updatePeriodButtons();
             fetchOrders();
         }
 
@@ -1648,7 +1716,9 @@ function getDashboardHTML() {
             document.getElementById('orderTypeFilter').value = '';
             state.filters = { search: '', status: '', orderType: '', dateFrom: '', dateTo: '' };
             state.pagination.currentPage = 1;
+            state.activePeriod = 'today';
             updateDateDisplays();
+            updatePeriodButtons();
             fetchOrders();
         }
 
@@ -1769,12 +1839,18 @@ function getDashboardHTML() {
 
             document.getElementById('showAllOrders').addEventListener('click', () => {
                 state.showAllOrders = true;
+                state.activePeriod = null;
+                updatePeriodButtons();
                 document.getElementById('dateFrom').value = '';
                 document.getElementById('dateTo').value = '';
                 state.filters.dateFrom = '';
                 state.filters.dateTo = '';
                 state.pagination.currentPage = 1;
                 fetchOrders();
+            });
+
+            document.querySelectorAll('.period-btn').forEach(btn => {
+                btn.addEventListener('click', () => setPeriod(btn.dataset.period));
             });
 
             document.querySelectorAll('.nav-item[data-view]').forEach(item => {
