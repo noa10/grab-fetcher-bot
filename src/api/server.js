@@ -9,6 +9,7 @@ const logger = require('../utils/logger');
 const database = require('../config/database');
 const Order = require('../models/Order');
 const ordersRouter = require('./routes/orders');
+const marketingRouter = require('./routes/marketing');
 const { router: authRouter, requireAuth, ensureDefaultAdmin } = require('./routes/auth');
 const getDashboardHTML = require('./dashboard-template');
 
@@ -44,10 +45,10 @@ class ApiServer {
         contentSecurityPolicy: {
           directives: {
             defaultSrc: ["'self'"],
-            scriptSrc: ["'self'", "'unsafe-inline'"],
+            scriptSrc: ["'self'", "'unsafe-inline'", "https://cdn.jsdelivr.net"],
             styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"],
             imgSrc: ["'self'", "data:", "https:"],
-            connectSrc: ["'self'"],
+            connectSrc: ["'self'", "https://cdn.jsdelivr.net"],
             fontSrc: ["'self'", "https://fonts.gstatic.com"],
             objectSrc: ["'none'"],
             frameSrc: ["'none'"],
@@ -131,6 +132,8 @@ class ApiServer {
       this.app.use('/api/auth', authRouter);
 
       this.app.use('/api/orders', requireAuth, ordersRouter);
+
+      this.app.use('/api/marketing', requireAuth, marketingRouter);
 
       this.app.get('/api/dashboard/summary', requireAuth, async (req, res) => {
         try {

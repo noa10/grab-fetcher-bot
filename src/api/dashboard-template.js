@@ -446,6 +446,7 @@ function getDashboardHTML() {
 
         .chart-title { font-size: 14px; font-weight: 600; }
         .chart-body { min-height: 200px; }
+        .chart-container { position: relative; height: 280px; }
 
         .bar-chart {
             display: flex;
@@ -882,6 +883,10 @@ function getDashboardHTML() {
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
                     <span class="nav-text">All Orders</span>
                 </a>
+                <a class="nav-item" data-view="marketing">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+                    <span class="nav-text">Marketing</span>
+                </a>
                 <a class="nav-item" href="/health">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
                     <span class="nav-text">Health Check</span>
@@ -1021,8 +1026,8 @@ function getDashboardHTML() {
                         <span class="date-text" id="ordersDate"></span>
                         <span class="timezone">(MYT GMT+8)</span>
                         <div class="period-selector">
-                            <button class="period-btn active" data-period="today">Today</button>
-                            <button class="period-btn" data-period="7d">7 Days</button>
+                            <button class="period-btn" data-period="today">Today</button>
+                            <button class="period-btn active" data-period="7d">7 Days</button>
                             <button class="period-btn" data-period="30d">30 Days</button>
                         </div>
                         <button class="show-all-btn" id="showAllOrders">Show All Orders</button>
@@ -1105,6 +1110,70 @@ function getDashboardHTML() {
                         </div>
                     </div>
                 </div>
+
+                <div class="view" id="marketingView">
+                    <div class="date-display">
+                        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2" ry="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg>
+                        <span>Marketing Analytics &mdash; </span>
+                        <span class="date-text" id="marketingDate"></span>
+                        <span class="timezone">(MYT GMT+8)</span>
+                    </div>
+
+                    <div class="stats-grid" id="marketingKpis">
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label">Total Customers</span><span class="stat-icon green">&#128101;</span></div><div class="stat-value" id="kpiTotalCustomers">-</div><div class="stat-change" id="kpiTotalCustomersChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label">Avg Order Value</span><span class="stat-icon blue">&#36;</span></div><div class="stat-value" id="kpiAvgOrderValue">-</div><div class="stat-change" id="kpiAvgOrderValueChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label">Repeat Rate</span><span class="stat-icon purple">&#128260;</span></div><div class="stat-value" id="kpiRepeatRate">-</div><div class="stat-change" id="kpiRepeatRateChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label">Champions</span><span class="stat-icon orange">&#127942;</span></div><div class="stat-value" id="kpiChampions">-</div><div class="stat-change" id="kpiChampionsChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label">At-Risk</span><span class="stat-icon red">&#9888;</span></div><div class="stat-value" id="kpiAtRisk">-</div><div class="stat-change" id="kpiAtRiskChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label">Lost</span><span class="stat-icon cyan">&#128546;</span></div><div class="stat-value" id="kpiLost">-</div><div class="stat-change" id="kpiLostChange"></div></div>
+                    </div>
+
+                    <div class="charts-grid">
+                        <div class="chart-card">
+                            <div class="chart-header"><span class="chart-title">RFM Segments</span></div>
+                            <div class="chart-body"><div class="chart-container"><canvas id="rfmChart"></canvas></div></div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header"><span class="chart-title">Retention Cohorts</span></div>
+                            <div class="chart-body"><div class="chart-container"><canvas id="cohortChart"></canvas></div></div>
+                        </div>
+                    </div>
+
+                    <div class="stats-grid" style="grid-template-columns:1fr 1fr; margin-top:16px;">
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <span class="chart-title">Win-Back Customers</span>
+                                <div style="display:flex;gap:8px;">
+                                    <button class="btn btn-sm btn-secondary" id="exportWinbackCsv">CSV</button>
+                                    <button class="btn btn-sm btn-secondary" id="exportWinbackJson">JSON</button>
+                                </div>
+                            </div>
+                            <div style="overflow-x:auto;">
+                                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                                    <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Name</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Phone</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Segment</th><th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Last Order</th><th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Total Spent</th></tr></thead>
+                                    <tbody id="winbackTableBody"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
+                                </table>
+                            </div>
+                        </div>
+                        <div class="chart-card">
+                            <div class="chart-header">
+                                <span class="chart-title">VIP Customers</span>
+                                <div style="display:flex;gap:8px;">
+                                    <button class="btn btn-sm btn-secondary" id="exportVipCsv">CSV</button>
+                                    <button class="btn btn-sm btn-secondary" id="exportVipJson">JSON</button>
+                                </div>
+                            </div>
+                            <div style="overflow-x:auto;">
+                                <table style="width:100%;border-collapse:collapse;font-size:13px;">
+                                    <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Name</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Phone</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Segment</th><th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Frequency</th><th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Total Spent</th></tr></thead>
+                                    <tbody id="vipTableBody"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                    <p style="font-size:11px;color:var(--text-muted);margin-top:12px;text-align:center;">Exported data includes customer name and phone for outreach purposes. Handle in accordance with PDPA / applicable data protection laws.</p>
+                </div>
+
             </div>
         </main>
     </div>
@@ -1125,6 +1194,7 @@ function getDashboardHTML() {
         <span id="toastMessage"></span>
     </div>
 
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" onerror="document.querySelectorAll('.chart-container').forEach(c=>c.innerHTML='<p style=\\'text-align:center;color:var(--text-muted);padding:40px;\\'>Chart.js failed to load. Check your network connection.</p>')"></script>
     <script>
         const state = {
             orders: [],
@@ -1136,7 +1206,7 @@ function getDashboardHTML() {
             summary: null,
             currentView: 'dashboard',
             showAllOrders: false,
-            activePeriod: 'today'
+            activePeriod: '7d'
         };
 
         function getMalaysiaDate() {
@@ -1716,13 +1786,16 @@ function getDashboardHTML() {
             document.getElementById('orderTypeFilter').value = '';
             state.filters = { search: '', status: '', orderType: '', dateFrom: '', dateTo: '' };
             state.pagination.currentPage = 1;
-            state.activePeriod = 'today';
+            state.activePeriod = '7d';
             updateDateDisplays();
             updatePeriodButtons();
             fetchOrders();
         }
 
         function switchView(view) {
+            if (window.rfmChartInstance) { window.rfmChartInstance.destroy(); window.rfmChartInstance = null; }
+            if (window.cohortChartInstance) { window.cohortChartInstance.destroy(); window.cohortChartInstance = null; }
+
             state.currentView = view;
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
@@ -1738,9 +1811,125 @@ function getDashboardHTML() {
                 document.querySelector('[data-view="orders"]').classList.add('active');
                 document.getElementById('headerTitle').textContent = 'All Orders';
                 document.getElementById('headerSubtitle').textContent = 'Manage and filter your orders';
+                if (!state.filters.dateFrom) setPeriod('7d');
+                else fetchOrders();
+            } else if (view === 'marketing') {
+                document.getElementById('marketingView').classList.add('active');
+                document.querySelector('[data-view="marketing"]').classList.add('active');
+                document.getElementById('headerTitle').textContent = 'Marketing';
+                document.getElementById('headerSubtitle').textContent = 'Customer segmentation & analytics';
                 updateDateDisplays();
-                fetchOrders();
+                fetchMarketingData();
             }
+        }
+
+        function getChartColors() {
+            const dark = document.documentElement.getAttribute('data-theme') === 'dark';
+            return {
+                text: dark ? '#f1f5f9' : '#0f172a',
+                grid: dark ? '#334155' : '#e2e8f0',
+                segments: ['#00b14f','#3b82f6','#8b5cf6','#f59e0b','#ef4444','#64748b'],
+            };
+        }
+
+        async function fetchMarketingData() {
+            try {
+                const [kpisRes, rfmRes, cohortsRes, winbackRes, vipRes] = await Promise.all([
+                    fetch('/api/marketing/kpis'), fetch('/api/marketing/rfm'),
+                    fetch('/api/marketing/cohorts'), fetch('/api/marketing/customers/winback'),
+                    fetch('/api/marketing/customers/vip'),
+                ]);
+                if (!kpisRes.ok || !rfmRes.ok || !cohortsRes.ok) throw new Error('Marketing API error');
+
+                const kpis = await kpisRes.json();
+                const rfm = await rfmRes.json();
+                const cohorts = await cohortsRes.json();
+                const winback = winbackRes.ok ? await winbackRes.json() : { data: [] };
+                const vip = vipRes.ok ? await vipRes.json() : { data: [] };
+
+                if (kpis.success) {
+                    const d = kpis.data;
+                    document.getElementById('kpiTotalCustomers').textContent = d.totalCustomers.toLocaleString();
+                    document.getElementById('kpiAvgOrderValue').textContent = 'RM ' + (d.avgOrderValue || 0).toFixed(2);
+                    document.getElementById('kpiRepeatRate').textContent = (d.repeatRate || 0).toFixed(1) + '%';
+                    document.getElementById('kpiChampions').textContent = (d.championCount || 0).toLocaleString();
+                    document.getElementById('kpiAtRisk').textContent = (d.atRiskCount || 0).toLocaleString();
+                    document.getElementById('kpiLost').textContent = (d.lostCount || 0).toLocaleString();
+                }
+
+                if (rfm.success && typeof Chart !== 'undefined') {
+                    const colors = getChartColors();
+                    const segData = rfm.data.segments || [];
+                    const labels = segData.map(s => s.segment);
+                    const counts = segData.map(s => s.count);
+                    window.rfmChartInstance = new Chart(document.getElementById('rfmChart'), {
+                        type: 'doughnut',
+                        data: { labels, datasets: [{ data: counts, backgroundColor: colors.segments.slice(0, labels.length) }] },
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: colors.text } } } }
+                    });
+                }
+
+                if (cohorts.success && typeof Chart !== 'undefined') {
+                    const colors = getChartColors();
+                    const cohortData = cohorts.data.cohorts || [];
+                    const labels = cohortData.map(c => c.cohortMonth);
+                    const retentionRates = cohortData.map(c => {
+                        const months = Object.keys(c.retention || {}).sort();
+                        return months.length > 1 ? c.retention[months[1]] || 0 : 100;
+                    });
+                    window.cohortChartInstance = new Chart(document.getElementById('cohortChart'), {
+                        type: 'line',
+                        data: {
+                            labels: labels,
+                            datasets: [{ label: 'Month-1 Retention %', data: retentionRates, borderColor: colors.segments[0], backgroundColor: colors.segments[0] + '20', fill: true, tension: 0.3 }]
+                        },
+                        options: {
+                            responsive: true, maintainAspectRatio: false,
+                            scales: { y: { beginAtZero: true, max: 100, ticks: { color: colors.text }, grid: { color: colors.grid } }, x: { ticks: { color: colors.text }, grid: { color: colors.grid } } },
+                            plugins: { legend: { labels: { color: colors.text } } }
+                        }
+                    });
+                }
+
+                renderCustomerTable('winbackTableBody', winback.data?.customers || [], 'monetary');
+                renderCustomerTable('vipTableBody', vip.data?.customers || [], 'frequency');
+            } catch (e) {
+                console.error('Marketing fetch error:', e);
+            }
+        }
+
+        function escapeHtml(str) {
+            if (typeof str !== 'string') return str;
+            return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#x27;');
+        }
+
+        function renderCustomerTable(tbodyId, customers, highlightField) {
+            const tbody = document.getElementById(tbodyId);
+            if (!customers.length) {
+                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No customers found</td></tr>';
+                return;
+            }
+            tbody.innerHTML = customers.map(c => '<tr>' +
+                '<td style="padding:8px;border-bottom:1px solid var(--border-color);">' + escapeHtml(c.name || '-') + '</td>' +
+                '<td style="padding:8px;border-bottom:1px solid var(--border-color);">' + escapeHtml(c.phone || '-') + '</td>' +
+                '<td style="padding:8px;border-bottom:1px solid var(--border-color);">' + escapeHtml(c.segment || '-') + '</td>' +
+                '<td style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">' + (highlightField === 'monetary' ? formatDate(c.lastOrder) : (c.frequency || 0)) + '</td>' +
+                '<td style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">RM ' + ((c.monetary || c.avgOrderValue || 0).toFixed(2)) + '</td>' +
+                '</tr>').join('');
+        }
+
+        function formatDate(d) {
+            if (!d) return '-';
+            return new Date(d).toLocaleDateString('en-MY', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        function downloadExport(type, format) {
+            const a = document.createElement('a');
+            a.href = '/api/marketing/export/' + type + '/' + format;
+            a.download = type + '-' + format + '.' + format;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
         }
 
         function toggleTheme() {
@@ -1807,11 +1996,17 @@ function getDashboardHTML() {
             document.getElementById('refreshBtn').addEventListener('click', () => {
                 if (state.currentView === 'dashboard') {
                     fetchSummary();
+                } else if (state.currentView === 'marketing') {
+                    fetchMarketingData();
                 } else {
                     fetchOrders();
                 }
             });
             document.getElementById('logoutBtn').addEventListener('click', logout);
+            document.getElementById('exportWinbackCsv').addEventListener('click', () => downloadExport('winback', 'csv'));
+            document.getElementById('exportWinbackJson').addEventListener('click', () => downloadExport('winback', 'json'));
+            document.getElementById('exportVipCsv').addEventListener('click', () => downloadExport('vip', 'csv'));
+            document.getElementById('exportVipJson').addEventListener('click', () => downloadExport('vip', 'json'));
             document.getElementById('sidebarCollapseBtn').addEventListener('click', toggleSidebar);
             document.getElementById('mobileMenuBtn').addEventListener('click', toggleMobileMenu);
             document.getElementById('sidebarOverlay').addEventListener('click', toggleMobileMenu);
@@ -1888,6 +2083,8 @@ function getDashboardHTML() {
                 updateDateDisplays();
                 if (state.currentView === 'dashboard') {
                     fetchSummary();
+                } else if (state.currentView === 'marketing') {
+                    fetchMarketingData();
                 } else {
                     fetchOrders();
                 }
