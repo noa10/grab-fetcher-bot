@@ -29,10 +29,11 @@ function buildSafeRegexQuery(searchTerm) {
 
 function sanitizeCsvField(field) {
   if (typeof field !== 'string') return field;
-  if (/^[=+\-@]/.test(field)) {
-    return "'" + field;
+  let sanitized = field.replace(/[\r\n\t]/g, ' ');
+  if (/^[=+\-@\s]/.test(sanitized)) {
+    return "'" + sanitized;
   }
-  return field;
+  return sanitized;
 }
 
 module.exports = {
