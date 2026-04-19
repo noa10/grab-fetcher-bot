@@ -98,24 +98,26 @@ function getDashboardHTML() {
             display: flex;
             align-items: center;
             gap: 12px;
-            flex: 1;
-            overflow: hidden;
+            min-width: 0;
         }
 
         .sidebar-logo-icon {
             width: 40px;
             height: 40px;
             min-width: 40px;
+            min-height: 40px;
             background: linear-gradient(135deg, var(--grab-green), var(--grab-green-light));
             border-radius: 10px;
             display: flex;
             align-items: center;
             justify-content: center;
             font-size: 20px;
+            line-height: 1;
+            flex-shrink: 0;
         }
 
-        .sidebar-logo-text { white-space: nowrap; transition: opacity 0.2s ease; }
-        .sidebar.collapsed .sidebar-logo-text { opacity: 0; pointer-events: none; }
+        .sidebar-logo-text { white-space: nowrap; transition: opacity 0.2s ease, width 0.2s ease; overflow: hidden; }
+        .sidebar.collapsed .sidebar-logo-text { opacity: 0; pointer-events: none; width: 0; }
 
         .sidebar-logo-text h1 {
             font-size: 16px;
@@ -151,6 +153,7 @@ function getDashboardHTML() {
         .sidebar-nav { flex: 1; padding: 8px 12px; overflow-y: auto; }
 
         .nav-item {
+            position: relative;
             display: flex;
             align-items: center;
             gap: 12px;
@@ -170,8 +173,18 @@ function getDashboardHTML() {
         .nav-item.active { background: var(--grab-green); color: white; }
         .nav-item svg { width: 20px; height: 20px; flex-shrink: 0; }
         .nav-item .nav-text { transition: opacity 0.2s ease; }
-        .sidebar.collapsed .nav-item .nav-text { opacity: 0; pointer-events: none; }
-        .sidebar.collapsed .nav-item { justify-content: center; padding: 10px; }
+        .sidebar.collapsed .nav-item .nav-text { position: absolute; opacity: 0; pointer-events: none; width: 0; overflow: hidden; white-space: nowrap; }
+        .sidebar.collapsed .nav-item { justify-content: center; padding: 10px; color: var(--text-primary); }
+        .sidebar.collapsed .nav-item:hover { color: var(--grab-green); }
+        .sidebar.collapsed .nav-item.active { color: white; }
+        .sidebar.collapsed .nav-item svg { stroke: var(--text-primary); }
+        .sidebar.collapsed .nav-item:hover svg { stroke: var(--grab-green); }
+        .sidebar.collapsed .nav-item.active svg { stroke: white; }
+        .sidebar.collapsed .sidebar-header { padding: 16px 12px 24px; flex-direction: column; align-items: center; gap: 8px; }
+        .sidebar.collapsed .sidebar-logo { justify-content: center; gap: 0; flex: 0 0 auto; min-width: 36px; }
+        .sidebar.collapsed .sidebar-logo-icon { width: 36px; height: 36px; min-width: 36px; min-height: 36px; font-size: 18px; }
+        .sidebar.collapsed .sidebar-logo-icon svg { width: 20px; height: 20px; }
+        .sidebar.collapsed .sidebar-footer { opacity: 0; }
 
         .sidebar-footer {
             padding: 16px 20px;
@@ -361,6 +374,16 @@ function getDashboardHTML() {
         .btn-secondary { background: var(--bg-tertiary); color: var(--text-secondary); border: 1px solid var(--border-color); }
         .btn-secondary:hover { background: var(--border-color); }
         .btn-sm { padding: 6px 12px; font-size: 12px; }
+        .btn-label { transition: opacity 0.15s ease, width 0.15s ease; overflow: hidden; white-space: nowrap; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .marketing-tables-grid { display: grid; grid-template-columns: 1fr 1fr; margin-top: 16px; gap: 16px; }
+        .compact-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+        .compact-table th { text-align: left; padding: 8px; border-bottom: 1px solid var(--border-color); font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px; }
+        .compact-table td { padding: 8px; border-bottom: 1px solid var(--border-light); font-size: 13px; }
+        .compact-table tr:hover td { background: var(--bg-tertiary); }
+        .notice-text { font-size: 11px; color: var(--text-muted); margin-top: 12px; text-align: center; }
+        .empty-cell { text-align: center; padding: 24px; color: var(--text-muted); }
 
         .stats-grid {
             display: grid;
@@ -837,23 +860,52 @@ function getDashboardHTML() {
 
         @media (max-width: 1024px) {
             .charts-grid { grid-template-columns: 1fr; }
+            .marketing-tables-grid { grid-template-columns: 1fr; }
         }
 
         @media (max-width: 768px) {
-            .sidebar { position: fixed; transform: translateX(-100%); }
+            .sidebar { position: fixed; transform: translateX(-100%); width: var(--sidebar-width); z-index: 200; }
             .sidebar.open { transform: translateX(0); }
+            .sidebar.collapsed { transform: translateX(-100%); width: var(--sidebar-width); }
+            .sidebar.collapsed.open { transform: translateX(0); width: var(--sidebar-width); }
             .sidebar-overlay.show { display: block; }
             .main-content { margin-left: 0; }
             .mobile-menu-btn { display: block; }
             .stats-grid { grid-template-columns: repeat(2, 1fr); }
             .filter-bar { flex-direction: column; }
             .filter-group { min-width: 100%; }
+            .filter-actions { width: 100%; }
+            .filter-actions .btn { flex: 1; justify-content: center; }
             .detail-grid { grid-template-columns: 1fr; }
+            .marketing-tables-grid { grid-template-columns: 1fr; }
+            .header { padding: 0 16px; }
+            .header-right { gap: 8px; }
+            .refresh-btn { padding: 8px; }
+            .logout-btn { padding: 8px; }
+            .refresh-btn .btn-label { display: none; }
+            .logout-btn .btn-label { display: none; }
+            .date-display { flex-wrap: wrap; gap: 4px; }
+            .period-selector { margin-left: 0; width: 100%; margin-top: 4px; }
+            .show-all-btn { margin-left: 0; }
+            .pagination { flex-wrap: wrap; gap: 12px; justify-content: center; }
+            .pagination-controls { flex-wrap: wrap; justify-content: center; }
+            .chart-container { height: 220px; }
+            .modal { margin: 12px; max-height: 85vh; }
+            .toast { left: 16px; right: 16px; bottom: 16px; }
+            .table-header { padding: 12px 16px; }
+            .table-actions { width: 100%; }
+            .table-actions .btn { flex: 1; justify-content: center; }
         }
 
         @media (max-width: 480px) {
             .stats-grid { grid-template-columns: 1fr; }
-            .content-area { padding: 16px; }
+            .content-area { padding: 12px; }
+            .stat-card { padding: 16px; }
+            .stat-value { font-size: 22px; }
+            .chart-card { padding: 16px; }
+            .header-title h2 { font-size: 16px; }
+            .filter-input, .filter-select { font-size: 16px; }
+            .nav-item { padding: 12px 10px; }
         }
     </style>
 </head>
@@ -864,7 +916,7 @@ function getDashboardHTML() {
         <aside class="sidebar" id="sidebar">
             <div class="sidebar-header">
                 <div class="sidebar-logo">
-                    <div class="sidebar-logo-icon">🚗</div>
+                    <div class="sidebar-logo-icon"><svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 01-2-2V9a2 2 0 012-2h1l2-3h8l2 3h1a2 2 0 012 2v6a2 2 0 01-2 2M5 17v2m14-2v2"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg></div>
                     <div class="sidebar-logo-text">
                         <h1>Grab Orders</h1>
                         <span>Fetcher Dashboard</span>
@@ -914,11 +966,11 @@ function getDashboardHTML() {
                     </button>
                     <button class="refresh-btn" id="refreshBtn">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 11-2.12-9.36L23 10"/></svg>
-                        Refresh
+                        <span class="btn-label">Refresh</span>
                     </button>
                     <button class="logout-btn" id="logoutBtn" title="Logout">
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
-                        Logout
+                        <span class="btn-label">Logout</span>
                     </button>
                 </div>
             </header>
@@ -1139,39 +1191,39 @@ function getDashboardHTML() {
                         </div>
                     </div>
 
-                    <div class="stats-grid" style="grid-template-columns:1fr 1fr; margin-top:16px;">
+                    <div class="marketing-tables-grid">
                         <div class="chart-card">
                             <div class="chart-header">
                                 <span class="chart-title">Win-Back Customers</span>
-                                <div style="display:flex;gap:8px;">
+                                <div class="table-actions">
                                     <button class="btn btn-sm btn-secondary" id="exportWinbackCsv">CSV</button>
                                     <button class="btn btn-sm btn-secondary" id="exportWinbackJson">JSON</button>
                                 </div>
                             </div>
-                            <div style="overflow-x:auto;">
-                                <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                                    <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Name</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Phone</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Segment</th><th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Last Order</th><th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Total Spent</th></tr></thead>
-                                    <tbody id="winbackTableBody"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
+                            <div class="table-wrapper">
+                                <table class="compact-table">
+                                    <thead><tr><th>Name</th><th>Phone</th><th>Segment</th><th class="text-right">Last Order</th><th class="text-right">Total Spent</th></tr></thead>
+                                    <tbody id="winbackTableBody"><tr><td colspan="5" class="empty-cell">Loading...</td></tr></tbody>
                                 </table>
                             </div>
                         </div>
                         <div class="chart-card">
                             <div class="chart-header">
                                 <span class="chart-title">VIP Customers</span>
-                                <div style="display:flex;gap:8px;">
+                                <div class="table-actions">
                                     <button class="btn btn-sm btn-secondary" id="exportVipCsv">CSV</button>
                                     <button class="btn btn-sm btn-secondary" id="exportVipJson">JSON</button>
                                 </div>
                             </div>
-                            <div style="overflow-x:auto;">
-                                <table style="width:100%;border-collapse:collapse;font-size:13px;">
-                                    <thead><tr><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Name</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Phone</th><th style="text-align:left;padding:8px;border-bottom:1px solid var(--border-color);">Segment</th><th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Frequency</th><th style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">Total Spent</th></tr></thead>
-                                    <tbody id="vipTableBody"><tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">Loading...</td></tr></tbody>
+                            <div class="table-wrapper">
+                                <table class="compact-table">
+                                    <thead><tr><th>Name</th><th>Phone</th><th>Segment</th><th class="text-right">Frequency</th><th class="text-right">Total Spent</th></tr></thead>
+                                    <tbody id="vipTableBody"><tr><td colspan="5" class="empty-cell">Loading...</td></tr></tbody>
                                 </table>
                             </div>
                         </div>
                     </div>
-                    <p style="font-size:11px;color:var(--text-muted);margin-top:12px;text-align:center;">Exported data includes customer name and phone for outreach purposes. Handle in accordance with PDPA / applicable data protection laws.</p>
+                    <p class="notice-text">Exported data includes customer name and phone for outreach purposes. Handle in accordance with PDPA / applicable data protection laws.</p>
                 </div>
 
             </div>
@@ -1906,15 +1958,15 @@ function getDashboardHTML() {
         function renderCustomerTable(tbodyId, customers, highlightField) {
             const tbody = document.getElementById(tbodyId);
             if (!customers.length) {
-                tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;padding:24px;color:var(--text-muted);">No customers found</td></tr>';
+                tbody.innerHTML = '<tr><td colspan="5" class="empty-cell">No customers found</td></tr>';
                 return;
             }
             tbody.innerHTML = customers.map(c => '<tr>' +
-                '<td style="padding:8px;border-bottom:1px solid var(--border-color);">' + escapeHtml(c.name || '-') + '</td>' +
-                '<td style="padding:8px;border-bottom:1px solid var(--border-color);">' + escapeHtml(c.phone || '-') + '</td>' +
-                '<td style="padding:8px;border-bottom:1px solid var(--border-color);">' + escapeHtml(c.segment || '-') + '</td>' +
-                '<td style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">' + (highlightField === 'monetary' ? formatDate(c.lastOrder) : (c.frequency || 0)) + '</td>' +
-                '<td style="text-align:right;padding:8px;border-bottom:1px solid var(--border-color);">RM ' + ((c.monetary || c.avgOrderValue || 0).toFixed(2)) + '</td>' +
+                '<td>' + escapeHtml(c.name || '-') + '</td>' +
+                '<td>' + escapeHtml(c.phone || '-') + '</td>' +
+                '<td>' + escapeHtml(c.segment || '-') + '</td>' +
+                '<td class="text-right">' + (highlightField === 'monetary' ? formatDate(c.lastOrder) : (c.frequency || 0)) + '</td>' +
+                '<td class="text-right">RM ' + ((c.monetary || c.avgOrderValue || 0).toFixed(2)) + '</td>' +
                 '</tr>').join('');
         }
 
