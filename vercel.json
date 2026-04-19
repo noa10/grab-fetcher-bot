@@ -1,7 +1,8 @@
 {
   "rewrites": [
     { "source": "/", "destination": "/api/dashboard" },
-    { "source": "/health", "destination": "/api/health" }
+    { "source": "/health", "destination": "/api/health" },
+    { "source": "/api/marketing/:path*", "destination": "/api/marketing" }
   ],
   "functions": {
     "api/**/*.js": {
