@@ -312,7 +312,7 @@ function getLoginHTML() {
 
     <div class="login-container">
         <div class="login-header">
-            <div class="login-logo">🚗</div>
+            <div class="login-logo"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 17h14M5 17a2 2 0 01-2-2V9a2 2 0 012-2h1l2-3h8l2 3h1a2 2 0 012 2v6a2 2 0 01-2 2M5 17v2m14-2v2"/><circle cx="7.5" cy="14.5" r="1.5"/><circle cx="16.5" cy="14.5" r="1.5"/></svg></div>
             <h1>Grab Orders</h1>
             <p>Sign in to access your dashboard</p>
         </div>
