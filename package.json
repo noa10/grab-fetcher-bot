@@ -21,7 +21,7 @@
   "author": "Grab Order Fetcher Bot",
   "license": "MIT",
   "dependencies": {
-    "@sparticuz/chromium": "^147.0.0",
+    "@sparticuz/chromium": "^147.0.1",
     "bcryptjs": "^3.0.3",
     "cookie-parser": "^1.4.7",
     "cron": "^4.4.0",
@@ -33,7 +33,7 @@
     "fs-extra": "^11.3.4",
     "helmet": "^8.1.0",
     "mongoose": "^9.4.1",
-    "puppeteer": "^24.40.0",
+    "puppeteer": "^24.41.0",
     "puppeteer-core": "^24.40.0",
     "winston": "^3.19.0"
   },
