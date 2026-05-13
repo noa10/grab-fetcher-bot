@@ -129,6 +129,26 @@ class ApiServer {
         }
       });
 
+      // Rate limiting for API routes
+      const apiLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000, // 15 minutes
+        max: 100, // limit each IP to 100 requests per windowMs
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: { error: 'Too many requests, please try again later.' }
+      });
+      this.app.use('/api/', apiLimiter);
+
+      // Stricter rate limiting for authentication routes
+      const authLimiter = rateLimit({
+        windowMs: 15 * 60 * 1000,
+        max: 10,
+        standardHeaders: true,
+        legacyHeaders: false,
+        message: { error: 'Too many authentication attempts, please try again later.' }
+      });
+      this.app.use('/api/auth/', authLimiter);
+
       this.app.use('/api/auth', authRouter);
 
       this.app.use('/api/orders', requireAuth, ordersRouter);
