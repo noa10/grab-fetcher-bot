@@ -7,7 +7,10 @@ const mongoose = require('mongoose');
 
 const name = 'state sync (no fabricated orders)';
 
-const MONGODB_URI = process.env.TEST_MONGODB_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/grab_fetcher_test';
+// Deliberately NOT falling back to process.env.MONGODB_URI: this suite calls
+// dropDatabase(), so pointing it at a developer's real Atlas cluster would wipe
+// production data. Always require TEST_MONGODB_URI, or use a local scratch db.
+const MONGODB_URI = process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017/grab_fetcher_test';
 
 let Order;
 let Fetcher;
