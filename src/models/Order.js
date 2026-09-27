@@ -83,7 +83,13 @@ const orderSchema = new mongoose.Schema({
       quantity: Number,
       price: Number,
       notes: String,
-      total: Number
+      total: Number,
+      // Extracted by the drawer scraper but previously discarded by strict mode
+      discount: String,
+      modifiers: [{
+        name: String,
+        value: String
+      }]
     }],
     specialInstructions: String,
     restaurantName: String,

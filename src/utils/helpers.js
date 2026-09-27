@@ -194,33 +194,84 @@ const generateScreenshotFilename = (orderNumber, timestamp = new Date()) => {
 
 /**
  * Parse Grab timestamp format: "31 Mar, Tue, 12:39 PM"
- * @param {string} str - Timestamp string
- * @returns {Date} Parsed date
+ *
+ * Grab's merchant portal renders timestamps in MYT (UTC+8) and omits the year.
+ * Parsing this with the server's local timezone produced timestamps that were
+ * off by 8 hours on a UTC host, which pushed orders placed before 08:00 MYT onto
+ * the previous day and desynced them from the same-day dedup lookup.
+ *
+ * The instant is therefore built explicitly in UTC+8 and the year is inferred
+ * from `referenceDate` (defaults to now, matching the portal's behaviour of
+ * showing the current year's history).
+ *
+ * @param {string} str - Timestamp string, e.g. "31 Mar, Tue, 12:39 PM"
+ * @param {Date} [referenceDate] - Date used to infer the missing year
+ * @returns {Date} Parsed date, or the reference date if the string is unparseable
  */
 const monthMap = {
   jan: 0, feb: 1, mar: 2, apr: 3, may: 4, jun: 5,
   jul: 6, aug: 7, sep: 8, oct: 9, nov: 10, dec: 11
 };
 
-function parseGrabTimestamp(str) {
-  if (!str || typeof str !== 'string') return new Date();
-  
-  const match = str.match(/(\d{1,2})\s+(\w{3}),\s+\w+,\s+(\d{1,2}):(\d{2})\s*(AM|PM)/i);
-  if (match) {
-    const [, day, monthStr, hour, min, ampm] = match;
-    const month = monthMap[monthStr.toLowerCase()];
-    if (month === undefined) return new Date();
-    
-    let h = parseInt(hour);
-    const upperAmpm = ampm.toUpperCase();
-    if (upperAmpm === 'PM' && h !== 12) h += 12;
-    else if (upperAmpm === 'AM' && h === 12) h = 0;
-    
-    return new Date(new Date().getFullYear(), month, parseInt(day), h, parseInt(min));
+// Grab merchant portal operates in Malaysia Time (UTC+8, no DST).
+const GRAB_TZ_OFFSET_MINUTES = 8 * 60;
+
+/**
+ * Resolve a year-less MYT wall-clock time against a reference date.
+ *
+ * The portal lists recent history first, so a month/day that is in the future
+ * relative to the reference belongs to the previous year (e.g. "28 Dec" seen in
+ * early January is last December, not this December).
+ */
+function resolveGrabYear(month, day, referenceDate) {
+  let year = referenceDate.getUTCFullYear();
+  const candidate = Date.UTC(year, month, day);
+  // Allow a small forward window: orders can be slightly ahead of the host clock.
+  if (candidate - referenceDate.getTime() > 24 * 60 * 60 * 1000) {
+    year -= 1;
   }
-  
-  const fallback = new Date(str);
-  return isNaN(fallback.getTime()) ? new Date() : fallback;
+  return year;
+}
+
+function parseGrabTimestamp(str, referenceDate = new Date()) {
+  const reference = referenceDate instanceof Date && !isNaN(referenceDate.getTime())
+    ? referenceDate
+    : new Date();
+
+  // Guard before constructing a Date from the input: `new Date(null)` is a valid
+  // epoch (1970), which would silently replace a missing timestamp with 1970.
+  if (!str || typeof str !== 'string' || !str.trim()) {
+    return new Date(reference);
+  }
+
+  // "27 Sep, Sun, 11:30 PM" (weekday shown) or "27 Sep, 11:30 PM" (omitted).
+  const match = str.match(/(\d{1,2})\s+(\w{3}),(?:\s*[\w]{2,9},)?\s*(\d{1,2}):(\d{2})\s*(AM|PM)/i);
+  if (!match) {
+    // Not the portal format — accept a machine-parseable value if there is one.
+    const fallback = new Date(str);
+    return isNaN(fallback.getTime()) ? new Date(reference) : fallback;
+  }
+
+  const [, day, monthStr, hour, min, ampm] = match;
+  const month = monthMap[monthStr.toLowerCase()];
+  if (month === undefined) {
+    return new Date(reference);
+  }
+
+  let h = parseInt(hour);
+  const upperAmpm = ampm.toUpperCase();
+  if (upperAmpm === 'PM' && h !== 12) h += 12;
+  else if (upperAmpm === 'AM' && h === 12) h = 0;
+
+  const year = resolveGrabYear(month, parseInt(day), reference);
+  const utcMs = Date.UTC(year, month, parseInt(day), h, parseInt(min))
+    - GRAB_TZ_OFFSET_MINUTES * 60 * 1000;
+
+  const parsed = new Date(utcMs);
+  if (isNaN(parsed.getTime())) {
+    return new Date(reference);
+  }
+  return parsed;
 }
 
 const cleanupOldFiles = async (dirPath, maxAgeHours = 24) => {

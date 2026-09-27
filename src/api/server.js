@@ -60,12 +60,25 @@ class ApiServer {
       this.app.use(express.json());
       this.app.use(express.urlencoded({ extended: true }));
 
+      // `secure: true` over plain HTTP means the browser silently discards the
+      // session cookie: login returns 200 with no Set-Cookie and every
+      // authenticated route redirects to /login. Default it off unless the
+      // deployment actually terminates TLS (COOKIE_SECURE=true).
+      const cookieSecure = process.env.COOKIE_SECURE !== undefined
+        ? process.env.COOKIE_SECURE === 'true'
+        : process.env.NODE_ENV === 'production' && process.env.HTTPS_PROXY;
+
+      if (process.env.NODE_ENV === 'production' && !cookieSecure) {
+        logger.warn('NODE_ENV=production but COOKIE_SECURE is off — the dashboard will not ' +
+          'hold a session over plain HTTP. Set COOKIE_SECURE=true once TLS is in front.');
+      }
+
       this.app.use(session({
         secret: validateSessionSecret(),
         resave: false,
         saveUninitialized: false,
         cookie: {
-          secure: process.env.NODE_ENV === 'production',
+          secure: cookieSecure,
           httpOnly: true,
           sameSite: 'lax',
           maxAge: 24 * 60 * 60 * 1000

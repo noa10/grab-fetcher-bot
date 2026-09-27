@@ -146,8 +146,10 @@ class OrderExtractor {
         rows.forEach((row, index) => {
           try {
             const cells = row.querySelectorAll('.dui-table-cell');
-            
-            if (cells.length < 4) {
+
+            // Status is read from cells[4], so a 4-cell row must be rejected —
+            // the old `length < 4` guard let it through with statusText undefined.
+            if (cells.length < 5) {
               return;
             }
 
@@ -277,6 +279,17 @@ class OrderExtractor {
 
       const detailedData = await this.page.evaluate((summary) => {
         try {
+          // Defined inside the evaluate because it runs in the browser context.
+          // Currency-agnostic: matches "RM 12.50", "SGD 12.50", "12.50", "-3.50".
+          // The previous /RM\\s*(...)/ pattern silently returned 0 for non-MYR merchants.
+          const matchAmount = (text) => {
+            if (!text) return null;
+            const m = String(text).match(/-?[\d,]+\.?\d*/);
+            if (!m) return null;
+            const value = parseFloat(m[0].replace(/,/g, ''));
+            return isNaN(value) ? null : value;
+          };
+
           const data = {
             orderNumber: summary.shortOrderId,
             longOrderId: summary.longOrderId,
@@ -406,18 +419,18 @@ class OrderExtractor {
 
                   if (firstCellLower.includes('subtotal')) {
                     const valueText = cells[cells.length - 1]?.textContent?.trim() || '';
-                    const valueMatch = valueText.match(/RM\s*([\d,]+\.?\d*)/);
+                    const valueMatch = matchAmount(valueText);
                     if (valueMatch) {
-                      data.pricing.subtotal = parseFloat(valueMatch[1].replace(/,/g, ''));
+                      data.pricing.subtotal = valueMatch;
                     }
                     continue;
                   }
-                  
+
                   if (firstCellLower.includes('total') && !firstCellLower.includes('subtotal')) {
                     const valueText = cells[cells.length - 1]?.textContent?.trim() || '';
-                    const valueMatch = valueText.match(/RM\s*([\d,]+\.?\d*)/);
+                    const valueMatch = matchAmount(valueText);
                     if (valueMatch) {
-                      data.pricing.total = parseFloat(valueMatch[1].replace(/,/g, ''));
+                      data.pricing.total = valueMatch;
                     }
                     continue;
                   }
@@ -683,7 +696,8 @@ class OrderExtractor {
             if (!row) return null;
 
             const cells = row.querySelectorAll('.dui-table-cell');
-            if (cells.length < 4) return null;
+            // Status is read from cells[4]; reject rows too short to supply it.
+            if (cells.length < 5) return null;
 
             const longOrderId = cells[1]?.textContent?.trim() || '';
             const shortOrderId = cells[2]?.textContent?.trim() || '';
@@ -710,12 +724,29 @@ class OrderExtractor {
           const drawerOpened = await this.clickOrderRowAndWait(i);
 
           let driverStatus = '';
+          let orderTimestamp = null;
+
           if (drawerOpened) {
             await sleep(1000);
-            driverStatus = await this.page.evaluate(() => {
+            const drawerData = await this.page.evaluate(() => {
               const driverStateEl = document.querySelector('[data-testid="driverState"]');
-              return driverStateEl ? driverStateEl.textContent.trim() : '';
+              // Timestamp lives in the Driver card, same as the full extractor reads it.
+              const driverCard = document.querySelector('.dui-card-head-title');
+              let timestampText = '';
+              if (driverCard && driverCard.textContent.trim() === 'Driver') {
+                const body = driverCard.closest('.dui-card')?.querySelector('.dui-card-body');
+                const tsEl = body?.querySelector('.css-e4jgmp-DriverDisplay');
+                if (tsEl) timestampText = tsEl.textContent.trim();
+              }
+              return {
+                driverStatus: driverStateEl ? driverStateEl.textContent.trim() : '',
+                timestampText
+              };
             });
+            driverStatus = drawerData.driverStatus;
+            if (drawerData.timestampText) {
+              orderTimestamp = parseGrabTimestamp(drawerData.timestampText);
+            }
             await this.closeOrderDrawer();
             await sleep(500);
           } else {
@@ -727,6 +758,7 @@ class OrderExtractor {
             longOrderId: rowData.longOrderId,
             status: rowData.status,
             driverStatus,
+            orderTimestamp,
           });
 
           await sleep(300);
@@ -758,6 +790,13 @@ class OrderExtractor {
       this.lastPollTime = new Date(Date.now() - (365 * 24 * 60 * 60 * 1000));
     }
 
+    // The extractor is now reused across poll cycles, so the in-memory dedup set
+    // accumulates. Cap it, or it grows without bound and eventually suppresses
+    // legitimate re-reads of a reused order number on a later date.
+    if (this.processedOrderIds.size > 500) {
+      this.processedOrderIds.clear();
+    }
+
     const newOrders = orders.filter(order => {
       let orderDate;
       if (typeof order.orderTimestamp === 'string') {
@@ -787,6 +826,15 @@ class OrderExtractor {
 
   setLastPollTime(timestamp) {
     this.lastPollTime = timestamp;
+  }
+
+  setPage(page) {
+    if (this.page === page) return;
+    this.page = page;
+    // A new page means a new DOM context: the dedup set and poll watermark refer
+    // to the previous document and must not leak across.
+    this.processedOrderIds.clear();
+    this.lastPollTime = null;
   }
 
   getLastPollTime() {

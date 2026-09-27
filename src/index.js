@@ -7,11 +7,45 @@ const Order = require('./models/Order');
 const GrabBot = require('./services/grabBot');
 const OrderExtractor = require('./services/orderExtractor');
 const ScreenshotService = require('./services/screenshotService');
-const { 
-  retryWithBackoff, 
-  sleep, 
-  cleanupOldFiles 
+const {
+  retryWithBackoff,
+  sleep,
+  cleanupOldFiles
 } = require('./utils/helpers');
+
+/**
+ * Read a possibly-dotted path off a mongoose document (or plain object).
+ * e.g. resolvePath(doc, 'pricing.total') -> number
+ */
+function resolvePath(obj, path) {
+  if (!obj) return undefined;
+  if (!path.includes('.')) return obj[path];
+  return path.split('.').reduce((acc, key) => (acc == null ? acc : acc[key]), obj);
+}
+
+/**
+ * Compare a candidate value against the current one, tolerating the type
+ * mismatches that appear between mongoose docs and plain extracted objects
+ * (Date vs ISO string, subdocument vs plain object, missing keys).
+ */
+function isSameValue(current, next) {
+  if (current === undefined || current === null) {
+    return next === undefined || next === null || next === '';
+  }
+  if (next === undefined || next === null) {
+    return current === null || current === '';
+  }
+  if (current instanceof Date || next instanceof Date) {
+    const a = current instanceof Date ? current.getTime() : new Date(current).getTime();
+    const b = next instanceof Date ? next.getTime() : new Date(next).getTime();
+    if (isNaN(a) || isNaN(b)) return String(current) === String(next);
+    return a === b;
+  }
+  if (typeof current === 'object' && typeof next === 'object') {
+    return JSON.stringify(current) === JSON.stringify(next);
+  }
+  return current === next;
+}
 
 class GrabOrderFetcher {
   constructor() {
@@ -189,7 +223,14 @@ class GrabOrderFetcher {
         }
       }
 
-      this.extractor = new OrderExtractor(this.bot.getPage());
+      // Reuse the existing extractor when the page object is unchanged. Constructing
+      // a new one every cycle reset lastPollTime to null, which made filterNewOrders
+      // fall back to "now - 365 days" and re-extract the entire visible history table
+      // (clicking every drawer, every poll) instead of just new orders. A new page
+      // object still forces a fresh extractor, since the old one holds a dead page.
+      if (!this.extractor || this.extractor.page !== this.bot.getPage()) {
+        this.extractor = new OrderExtractor(this.bot.getPage());
+      }
 
       // Extract orders with retry mechanism
       const orders = await retryWithBackoff(
@@ -258,13 +299,13 @@ class GrabOrderFetcher {
       const existingOrder = await Order.findByOrderNumberAndDate(orderData.orderNumber, orderData.orderTimestamp);
       if (existingOrder) {
         logger.order(`Order ${orderData.orderNumber} already exists for this date, updating with fresh data...`);
-        
+
         // Preserve customer name if drawer shows *** (expired after 15 min)
         if (orderData._preserveCustomerName && existingOrder.customerName && existingOrder.customerName !== 'Customer') {
           orderData.customerName = existingOrder.customerName;
           logger.order(`Preserved existing customer name: ${existingOrder.customerName}`);
         }
-        
+
         // Update existing order with fresh data
         const updateFields = {
           driverName: orderData.driverName !== 'Pending' ? orderData.driverName : existingOrder.driverName,
@@ -279,17 +320,21 @@ class GrabOrderFetcher {
           'pricing.subtotal': orderData.pricing.subtotal || existingOrder.pricing.subtotal,
           'pricing.total': orderData.pricing.total || existingOrder.pricing.total,
           'pricing.discount': orderData.pricing.discount || existingOrder.pricing.discount,
-          lastUpdated: new Date()
         };
-        
-        // Only update if there are actual changes
-        const hasChanges = Object.values(updateFields).some(v => 
-          v !== undefined && JSON.stringify(v) !== JSON.stringify(existingOrder.toObject())
+
+        // Only write when a value actually differs. Compare field-to-field: the
+        // previous check compared each scalar against JSON.stringify(wholeDocument),
+        // which is never equal, so every poll rewrote every order.
+        const hasChanges = Object.entries(updateFields).some(([path, value]) =>
+          !isSameValue(resolvePath(existingOrder, path), value)
         );
-        
-        if (hasChanges || orderData._preserveCustomerName) {
+
+        if (hasChanges) {
+          updateFields.lastUpdated = new Date();
+          // orderDate MUST be part of the filter: Grab reuses order numbers across
+          // dates, so an orderNumber-only update writes to an arbitrary match.
           await Order.updateOne(
-            { orderNumber: orderData.orderNumber },
+            { orderNumber: orderData.orderNumber, orderDate: orderData.orderDate },
             { $set: updateFields }
           );
           logger.order(`Order ${orderData.orderNumber} updated with fresh data`);
@@ -347,8 +392,13 @@ class GrabOrderFetcher {
     try {
       logger.bot('Starting order state synchronization...');
 
-      const extractor = new OrderExtractor(this.bot.getPage());
-      const stateUpdates = await extractor.extractOrdersForStateUpdate();
+      // Reuse the live extractor when its page is still current. Building a second
+      // extractor here (as this used to) worked against a different page object than
+      // the one extractOrders() just used, and made the method untestable in isolation.
+      if (!this.extractor || this.extractor.page !== this.bot.getPage()) {
+        this.extractor = new OrderExtractor(this.bot.getPage());
+      }
+      const stateUpdates = await this.extractor.extractOrdersForStateUpdate();
 
       if (stateUpdates.length === 0) {
         logger.bot('No orders found for state sync');
@@ -357,11 +407,26 @@ class GrabOrderFetcher {
 
       let updatedCount = 0;
       let registeredCount = 0;
+      let skippedUnknownDate = 0;
 
       for (const update of stateUpdates) {
-        // Find order by orderNumber + today's date (Grab reuses order numbers across dates)
-        const todayDate = Order.toOrderDate(new Date());
-        const existingOrder = await Order.findOne({ orderNumber: update.orderNumber, orderDate: todayDate });
+        // Key the lookup on the order's OWN date, not today. The history table spans
+        // many days; keying on toOrderDate(new Date()) made every non-today row miss
+        // the lookup and fall into the insert branch, fabricating zero-value stubs.
+        const orderTimestamp = update.orderTimestamp instanceof Date
+          ? update.orderTimestamp
+          : (update.orderTimestamp ? new Date(update.orderTimestamp) : null);
+
+        if (!orderTimestamp || isNaN(orderTimestamp.getTime())) {
+          // Without a reliable date we cannot match or dedup safely. Skip rather than
+          // corrupt: an insert here would produce an undeduplicable duplicate.
+          skippedUnknownDate++;
+          logger.order(`Skipped state sync for ${update.orderNumber}: no usable order timestamp`);
+          continue;
+        }
+
+        const orderDate = Order.toOrderDate(orderTimestamp);
+        const existingOrder = await Order.findOne({ orderNumber: update.orderNumber, orderDate });
 
         if (existingOrder) {
           const needsUpdate = update.driverStatus && existingOrder.driverStatus !== update.driverStatus
@@ -382,17 +447,16 @@ class GrabOrderFetcher {
           updateFields.status = update.status;
 
           await Order.updateOne(
-            { orderNumber: update.orderNumber, orderDate: todayDate },
+            { orderNumber: update.orderNumber, orderDate },
             { $set: updateFields }
           );
 
           updatedCount++;
         } else if (update.status !== 'unknown' && update.orderNumber) {
-          const orderTimestamp = new Date();
           const order = new Order({
             orderNumber: update.orderNumber,
             longOrderId: update.longOrderId || '',
-            orderDate: Order.toOrderDate(orderTimestamp),
+            orderDate,
             customerName: 'Customer',
             driverName: 'Pending',
             driverStatus: update.driverStatus,
@@ -417,19 +481,23 @@ class GrabOrderFetcher {
               address: '',
               coordinates: { latitude: null, longitude: null },
               estimatedDeliveryTime: null,
-              actualDeliveryTime: null,
+              actualDeliveryTime: null
             },
             source: 'grab-merchant-portal-history-state-sync',
           });
 
           await order.save();
           registeredCount++;
-          logger.order(`Registered new order from state sync: ${update.orderNumber}`);
+          logger.order(`Registered new order from state sync: ${update.orderNumber} (${orderDate.toISOString().slice(0, 10)})`);
         }
       }
 
+      if (skippedUnknownDate > 0) {
+        logger.bot(`State sync skipped ${skippedUnknownDate} order(s) with no usable timestamp`);
+      }
+
       logger.bot(`State sync completed: ${updatedCount} orders updated, ${registeredCount} orders registered, ${stateUpdates.length} total checked`);
-      return { updatedCount, registeredCount, totalChecked: stateUpdates.length };
+      return { updatedCount, registeredCount, totalChecked: stateUpdates.length, skippedUnknownDate };
     } catch (error) {
       logger.error('Failed to sync order states:', error);
       return { updatedCount: 0, registeredCount: 0, totalChecked: 0 };
