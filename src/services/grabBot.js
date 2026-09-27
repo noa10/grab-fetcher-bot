@@ -1,4 +1,5 @@
 const puppeteer = require('puppeteer');
+const fs = require('fs-extra');
 const logger = require('../utils/logger');
 const {
   sleep,
@@ -122,10 +123,24 @@ class GrabBot {
       await this.clickButtonByText('Continue');
 
       logger.puppeteer('Waiting for password challenge page...');
-      try {
-        await this.page.waitForNavigation({ waitUntil: 'networkidle2', timeout: 15000 });
-      } catch (navError) {
-        logger.puppeteer('Navigation timeout, checking current page...');
+      // The Grab login page is an SPA: clicking Continue does not trigger a real
+      // page load, so waitForNavigation always burned its full timeout. Poll for
+      // the password field instead and only fall back to waiting on navigation.
+      const passwordVisible = await this.page.evaluate(() => {
+        const input = document.querySelector('input[type="password"], input[name="password"]');
+        if (!input) return false;
+        const rect = input.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+      });
+
+      if (!passwordVisible) {
+        try {
+          await this.page.waitForSelector('input[type="password"]', { visible: true, timeout: 15000 });
+        } catch (navError) {
+          // Fall through: the error handling below reports the real cause
+          // (bad credentials surfaces as "Account Not Found" with no password field).
+          logger.puppeteer('Password field did not appear, checking current page...');
+        }
       }
 
       await sleep(randomDelay(1000, 2000));
@@ -147,7 +162,12 @@ class GrabBot {
       }
 
       if (!passwordInput) {
-        passwordInput = await this.page.evaluateHandle(() => {
+        // evaluateHandle returns a CdpJSHandle, NOT an ElementHandle, so .click()
+        // does not exist on it — convert with asElement() before using it. The old
+        // code kept the raw handle and crashed with "passwordInput.click is not a
+        // function", masking the real cause (the portal never showed a password
+        // field, e.g. "Account Not Found" for an unknown username).
+        const handle = await this.page.evaluateHandle(() => {
           const inputs = Array.from(document.querySelectorAll('input'));
           return inputs.find(input =>
             input.type === 'password' ||
@@ -155,10 +175,19 @@ class GrabBot {
             input.name?.toLowerCase().includes('password')
           ) || null;
         });
+        passwordInput = handle && handle.asElement ? handle.asElement() : null;
       }
 
       if (!passwordInput) {
-        throw new Error('Could not find password input field');
+        // Nothing to type into. Name the actual portal state so the log points at
+        // the credentials rather than at the scraper.
+        const accountNotFound = await this.page.evaluate(() =>
+          /account\s+not\s+found/i.test(document.body.innerText)
+        );
+        if (accountNotFound) {
+          throw new Error('Login failed - Grab reports the username does not exist. Check GRAB_USERNAME.');
+        }
+        throw new Error('Login failed - no password field appeared (check credentials)');
       }
 
       await passwordInput.click();
@@ -210,6 +239,16 @@ class GrabBot {
         if (hasError) {
           throw new Error('Login failed - invalid credentials or authentication error');
         }
+
+        // The portal renders "Account Not Found" on an unknown username. Surface that
+        // directly, otherwise the failure below reads like a scraper breakage.
+        const accountNotFound = await this.page.evaluate(() =>
+          /account\s+not\s+found/i.test(document.body.innerText)
+        );
+        if (accountNotFound) {
+          throw new Error('Login failed - Grab reports the username does not exist. Check GRAB_USERNAME.');
+        }
+
         throw new Error('Login failed - still on login page (check credentials)');
       }
 
@@ -224,6 +263,9 @@ class GrabBot {
       logger.error('Login failed:', error);
       if (this.page) {
         try {
+          // A fresh checkout has no screenshots/ dir, so the error screenshot — the
+          // main diagnostic for a login failure — was silently failing to save.
+          await fs.ensureDir('screenshots');
           await this.page.screenshot({ path: 'screenshots/login_error.png' });
           logger.puppeteer('Saved login error screenshot to screenshots/login_error.png');
         } catch (e) {
@@ -347,6 +389,10 @@ class GrabBot {
       }
 
       await this.closePopups();
+
+      // ScreenshotService.init() creates this directory at startup, but the
+      // navigation diagnostics below can run before it, so make sure it exists.
+      await fs.ensureDir('screenshots');
 
       const currentUrl = this.page.url();
       logger.puppeteer(`Current URL: ${currentUrl}`);

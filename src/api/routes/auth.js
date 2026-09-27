@@ -7,7 +7,15 @@ const logger = require('../../utils/logger');
 
 function requireAuth(req, res, next) {
   if (!req.session || !req.session.userId) {
-    if (req.path.startsWith('/api/') || req.headers['content-type']?.includes('application/json')) {
+    // Use originalUrl, not path: this middleware is mounted with app.use('/api/orders', …),
+    // so req.path is mount-relative ('/recent') and the '/api/' test never matched —
+    // unauthenticated API calls were answered with a 302 to the login HTML instead
+    // of a 401 JSON body.
+    const wantsJson = req.originalUrl?.startsWith('/api/')
+      || req.headers['content-type']?.includes('application/json')
+      || req.headers.accept?.includes('application/json');
+
+    if (wantsJson) {
       return res.status(401).json({ success: false, error: 'Unauthorized', message: 'Authentication required' });
     }
     return res.redirect('/login');
