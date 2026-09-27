@@ -32,7 +32,7 @@
     "express-session": "^1.19.0",
     "fs-extra": "^11.3.5",
     "helmet": "^8.1.0",
-    "mongoose": "^9.6.2",
+    "mongoose": "^9.7.2",
     "puppeteer": "^24.43.1",
     "puppeteer-core": "^24.40.0",
     "winston": "^3.19.0"
