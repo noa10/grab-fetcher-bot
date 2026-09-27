@@ -306,6 +306,7 @@ class OrderExtractor {
             pricing: {
               subtotal: 0,
               discount: 0,
+              tax: 0,
               total: 0,
               currency: summary.currency || 'MYR'
             }
@@ -338,15 +339,53 @@ class OrderExtractor {
             data.driverStatus = driverStateEl.textContent.trim();
           }
 
-          const driverCard = document.querySelector('.dui-card-head-title');
-          if (driverCard && driverCard.textContent.trim() === 'Driver') {
-            const driverCardBody = driverCard.closest('.dui-card')?.querySelector('.dui-card-body');
-            if (driverCardBody) {
-              const driverPhoto = driverCardBody.querySelector('.dui-avatar img');
-              if (driverPhoto) {
-                data.driverPhotoUrl = driverPhoto.getAttribute('src') || '';
-              }
+          // Driver card — locate by title text by iterating all card titles
+          // (Driver may not be the first card). Stable anchors: .dui-avatar img
+          // (photo) and [data-testid="driverState"] (status). Name/phone/
+          // timestamp have no data-testid, so locate them structurally within
+          // the .dui-row/.dui-col layout and fall back to the legacy hashed
+          // css-xxxxx-DriverDisplay classes for older DOM builds.
+          const cardTitles = document.querySelectorAll('.dui-card-head-title');
+          for (const title of cardTitles) {
+            if (title.textContent.trim() !== 'Driver') continue;
+            const driverCardBody = title.closest('.dui-card')?.querySelector('.dui-card-body');
+            if (!driverCardBody) break;
 
+            const driverPhoto = driverCardBody.querySelector('.dui-avatar img');
+            if (driverPhoto) {
+              data.driverPhotoUrl = driverPhoto.getAttribute('src') || '';
+            }
+
+            const driverStateEl = driverCardBody.querySelector('[data-testid="driverState"]');
+            if (driverStateEl) {
+              data.driverStatus = driverStateEl.textContent.trim();
+            }
+
+            // Name + phone live in the .dui-col sibling of the avatar's col
+            // (both children of the same inner .dui-row): first div = name,
+            // second div = phone.
+            const avatar = driverCardBody.querySelector('.dui-avatar');
+            const avatarCol = avatar ? avatar.closest('.dui-col') : null;
+            let namePhoneCol = null;
+            if (avatarCol && avatarCol.parentElement) {
+              for (const col of avatarCol.parentElement.children) {
+                if (col !== avatarCol && col.classList.contains('dui-col')) {
+                  namePhoneCol = col;
+                  break;
+                }
+              }
+            }
+            const npDivs = namePhoneCol
+              ? Array.from(namePhoneCol.children).filter(c => c.tagName === 'DIV')
+              : [];
+            const nameEl = npDivs[0] || null;
+            const phoneEl = npDivs[1] || null;
+
+            if (nameEl && nameEl.textContent.trim()) {
+              data.driverName = nameEl.textContent.trim();
+            } else {
+              // Legacy fallback: hashed css-zep5kh-DriverDisplay (also matches
+              // the driverState element, which we skip).
               const driverNameEls = driverCardBody.querySelectorAll('.css-zep5kh-DriverDisplay');
               for (const el of driverNameEls) {
                 if (el.getAttribute('data-testid') === 'driverState') continue;
@@ -355,23 +394,49 @@ class OrderExtractor {
                   data.driverName = text;
                 }
               }
+            }
 
+            const phoneText = phoneEl ? phoneEl.textContent.trim() : '';
+            if (phoneText && phoneText !== '-' && phoneText !== '–') {
+              const phoneMatch = phoneText.match(/[+📞\s\d]+/);
+              if (phoneMatch) {
+                data.driverPhone = phoneMatch[0].trim();
+              }
+            } else if (!data.driverPhone) {
+              // Legacy fallback: hashed css-vodjec-DriverDisplay
               const driverPhoneEl = driverCardBody.querySelector('.css-vodjec-DriverDisplay');
               if (driverPhoneEl) {
-                const phoneText = driverPhoneEl.textContent.trim();
-                if (phoneText && phoneText !== '-' && phoneText !== '–') {
-                  const phoneMatch = phoneText.match(/[+📞\s\d]+/);
+                const legacyPhoneText = driverPhoneEl.textContent.trim();
+                if (legacyPhoneText && legacyPhoneText !== '-' && legacyPhoneText !== '–') {
+                  const phoneMatch = legacyPhoneText.match(/[+📞\s\d]+/);
                   if (phoneMatch) {
                     data.driverPhone = phoneMatch[0].trim();
                   }
                 }
               }
+            }
 
-              const timestampEl = driverCardBody.querySelector('.css-e4jgmp-DriverDisplay');
-              if (timestampEl) {
-                data.orderTimestamp = timestampEl.textContent.trim();
+            // Timestamp is the sibling of driverState within its .dui-col.
+            let timestampEl = null;
+            if (driverStateEl && driverStateEl.parentElement) {
+              for (const sib of driverStateEl.parentElement.children) {
+                if (sib !== driverStateEl && sib.textContent.trim()) {
+                  timestampEl = sib;
+                  break;
+                }
               }
             }
+            if (timestampEl) {
+              data.orderTimestamp = timestampEl.textContent.trim();
+            } else {
+              // Legacy fallback: hashed css-e4jgmp-DriverDisplay
+              const legacyTsEl = driverCardBody.querySelector('.css-e4jgmp-DriverDisplay');
+              if (legacyTsEl) {
+                data.orderTimestamp = legacyTsEl.textContent.trim();
+              }
+            }
+
+            break;
           }
 
           const customerCard = document.querySelectorAll('.dui-card-head-title');
@@ -379,7 +444,25 @@ class OrderExtractor {
             if (title.textContent.trim() === 'Customer') {
               const customerCardBody = title.closest('.dui-card')?.querySelector('.dui-card-body');
               if (customerCardBody) {
-                const customerNameEl = customerCardBody.querySelector('.css-qbank5-CustomerDisplay');
+                // Customer name has no data-testid. It is the first text div
+                // in the first .dui-col of the card body, sitting beside the
+                // [data-testid="eater-number"] phone element. Locate it
+                // structurally, then fall back to the hashed class.
+                let customerNameEl = null;
+                const firstCol = customerCardBody.querySelector('.dui-row .dui-col');
+                if (firstCol) {
+                  for (const child of firstCol.children) {
+                    if (child.tagName === 'DIV' &&
+                        child.getAttribute('data-testid') !== 'eater-number' &&
+                        child.textContent.trim()) {
+                      customerNameEl = child;
+                      break;
+                    }
+                  }
+                }
+                if (!customerNameEl) {
+                  customerNameEl = customerCardBody.querySelector('.css-qbank5-CustomerDisplay');
+                }
                 if (customerNameEl) {
                   const name = customerNameEl.textContent.trim();
                   data.customerName = (name && name !== '***') ? name : '';
@@ -402,13 +485,20 @@ class OrderExtractor {
             }
           }
 
-          const itemsTable = document.querySelector('.css-1q5gxb5-ItemDisplay table, table.css-s8gu33-ItemDisplay');
+          // Locate the items table via the stable item-name test id. Grab's
+          // css-xxxxx-ItemDisplay class names are build-hashed and change
+          // between releases, so [data-testid="item-name"] is the reliable
+          // anchor. Fall back to the legacy selectors for older DOM builds.
+          const itemNameAnchor = document.querySelector('[data-testid="item-name"]');
+          const itemsTable = itemNameAnchor
+            ? itemNameAnchor.closest('table')
+            : document.querySelector('.css-1q5gxb5-ItemDisplay table, table.css-s8gu33-ItemDisplay');
           if (itemsTable) {
-            const tbody = itemsTable.querySelector('tbody');
+            const tbody = itemsTable.querySelector('tbody') || itemsTable;
             if (tbody) {
               const rows = tbody.querySelectorAll('tr');
               let currentItemIndex = -1;
-              
+
               for (const row of rows) {
                 try {
                   const cells = row.querySelectorAll('td');
@@ -422,6 +512,11 @@ class OrderExtractor {
                     const valueMatch = matchAmount(valueText);
                     if (valueMatch) {
                       data.pricing.subtotal = valueMatch;
+                    }
+                    // Subtotal row may carry "Includes tax (RMx.xx)".
+                    const taxMatch = firstCellText.match(/includes tax\s*\(RM\s*([\d,]+\.?\d*)\)/i);
+                    if (taxMatch) {
+                      data.pricing.tax = parseFloat(taxMatch[1].replace(/,/g, ''));
                     }
                     continue;
                   }
@@ -448,7 +543,7 @@ class OrderExtractor {
                   }
 
                   const itemNameEl = row.querySelector('[data-testid="item-name"]');
-                  
+
                   if (itemNameEl) {
                     const itemName = itemNameEl.textContent.trim();
                     const priceText = cells[1]?.textContent?.trim() || '0';
@@ -474,14 +569,31 @@ class OrderExtractor {
                       modifiers: []
                     });
                     currentItemIndex = data.orderItems.length - 1;
-                  } else if (currentItemIndex >= 0 && row.className?.includes('css-h6k0xq')) {
-                    const optionName = cells[0]?.textContent?.trim() || '';
-                    const lines = optionName.split('\n').map(l => l.trim()).filter(l => l);
-                    if (lines.length >= 2) {
-                      data.orderItems[currentItemIndex].modifiers.push({
-                        name: lines[0],
-                        value: lines[1]
-                      });
+                  } else if (currentItemIndex >= 0) {
+                    // Modifier / option row. These rows have no item-name and
+                    // are built from a .dui-row containing two .dui-col children
+                    // (label + value). Parse structurally rather than relying on
+                    // hashed <tr> class names (e.g. css-h6k0xq / YYfcqn2FGv5cUDyO3m0D).
+                    const cols = row.querySelectorAll('.dui-row .dui-col');
+                    if (cols.length >= 2) {
+                      const modName = cols[0]?.textContent?.trim() || '';
+                      const modValue = cols[1]?.textContent?.trim() || '';
+                      if (modName && modValue) {
+                        data.orderItems[currentItemIndex].modifiers.push({
+                          name: modName,
+                          value: modValue
+                        });
+                      }
+                    } else if (row.className?.includes('css-h6k0xq')) {
+                      // Legacy fallback for older Grab DOM builds.
+                      const optionName = cells[0]?.textContent?.trim() || '';
+                      const lines = optionName.split('\n').map(l => l.trim()).filter(l => l);
+                      if (lines.length >= 2) {
+                        data.orderItems[currentItemIndex].modifiers.push({
+                          name: lines[0],
+                          value: lines[1]
+                        });
+                      }
                     }
                   }
 
@@ -526,7 +638,7 @@ class OrderExtractor {
           subtotal: detailedData.pricing.subtotal || 0,
           deliveryFee: 0,
           serviceFee: 0,
-          tax: 0,
+          tax: detailedData.pricing.tax || 0,
           discount: detailedData.pricing.discount || 0,
           total: detailedData.pricing.total || orderSummary.totalAmount || 0,
           currency: detailedData.pricing.currency || 'MYR'
