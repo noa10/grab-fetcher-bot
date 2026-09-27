@@ -131,8 +131,11 @@ class GitHubActionsRunner {
     try {
       logger.bot('Starting order state synchronization...');
 
-      const extractor = new OrderExtractor(this.bot.getPage());
-      const stateUpdates = await extractor.extractOrdersForStateUpdate();
+      // Reuse the live extractor when its page is still current, mirroring index.js.
+      if (!this.extractor || this.extractor.page !== this.bot.getPage()) {
+        this.extractor = new OrderExtractor(this.bot.getPage());
+      }
+      const stateUpdates = await this.extractor.extractOrdersForStateUpdate();
 
       if (stateUpdates.length === 0) {
         logger.bot('No orders found for state sync');
@@ -141,11 +144,26 @@ class GitHubActionsRunner {
 
       let updatedCount = 0;
       let registeredCount = 0;
+      let skippedUnknownDate = 0;
 
       for (const update of stateUpdates) {
-        // Find order by orderNumber + today's date (Grab reuses order numbers across dates)
-        const todayDate = Order.toOrderDate(new Date());
-        const existingOrder = await Order.findOne({ orderNumber: update.orderNumber, orderDate: todayDate });
+        // Key the lookup on the order's OWN date, not today. The history table spans
+        // many days; keying on toOrderDate(new Date()) made every non-today row miss
+        // the lookup and fall into the insert branch, fabricating zero-value stubs.
+        const orderTimestamp = update.orderTimestamp instanceof Date
+          ? update.orderTimestamp
+          : (update.orderTimestamp ? new Date(update.orderTimestamp) : null);
+
+        if (!orderTimestamp || isNaN(orderTimestamp.getTime())) {
+          // Without a reliable date we cannot match or dedup safely. Skip rather than
+          // corrupt: an insert here would produce an undeduplicable duplicate.
+          skippedUnknownDate++;
+          logger.order(`Skipped state sync for ${update.orderNumber}: no usable order timestamp`);
+          continue;
+        }
+
+        const orderDate = Order.toOrderDate(orderTimestamp);
+        const existingOrder = await Order.findOne({ orderNumber: update.orderNumber, orderDate });
 
         if (existingOrder) {
           const needsUpdate = update.driverStatus && existingOrder.driverStatus !== update.driverStatus
@@ -166,17 +184,16 @@ class GitHubActionsRunner {
           updateFields.status = update.status;
 
           await Order.updateOne(
-            { orderNumber: update.orderNumber, orderDate: todayDate },
+            { orderNumber: update.orderNumber, orderDate },
             { $set: updateFields }
           );
 
           updatedCount++;
         } else if (update.status !== 'unknown' && update.orderNumber) {
-          const orderTimestamp = new Date();
           const order = new Order({
             orderNumber: update.orderNumber,
             longOrderId: update.longOrderId || '',
-            orderDate: Order.toOrderDate(orderTimestamp),
+            orderDate,
             customerName: 'Customer',
             driverName: 'Pending',
             driverStatus: update.driverStatus,
@@ -201,19 +218,23 @@ class GitHubActionsRunner {
               address: '',
               coordinates: { latitude: null, longitude: null },
               estimatedDeliveryTime: null,
-              actualDeliveryTime: null,
+              actualDeliveryTime: null
             },
             source: 'grab-merchant-portal-history-state-sync',
           });
 
           await order.save();
           registeredCount++;
-          logger.order(`Registered new order from state sync: ${update.orderNumber}`);
+          logger.order(`Registered new order from state sync: ${update.orderNumber} (${orderDate.toISOString().slice(0, 10)})`);
         }
       }
 
+      if (skippedUnknownDate > 0) {
+        logger.bot(`State sync skipped ${skippedUnknownDate} order(s) with no usable timestamp`);
+      }
+
       logger.bot(`State sync completed: ${updatedCount} orders updated, ${registeredCount} orders registered, ${stateUpdates.length} total checked`);
-      return { updatedCount, registeredCount, totalChecked: stateUpdates.length };
+      return { updatedCount, registeredCount, totalChecked: stateUpdates.length, skippedUnknownDate };
     } catch (error) {
       logger.error('Failed to sync order states:', error);
       return { updatedCount: 0, registeredCount: 0, totalChecked: 0 };

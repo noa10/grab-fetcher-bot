@@ -119,6 +119,72 @@ Open http://localhost:3000/login to sign in, then access the dashboard at http:/
 
 > When you're ready to automate the fetcher, continue with the [Deployment](#-deployment) steps to configure self-hosted PM2 deployment on your own server.
 
+### 5. Running on ARM64 (Raspberry Pi, Oracle Ampere, AWS Graviton)
+
+Puppeteer downloads an **x86_64** Chrome by default, which fails on ARM hosts with
+`Exec format error`. Install the ARM64 build and point Puppeteer at it explicitly:
+
+```bash
+# Fetch the ARM64 Chrome for Testing build
+curl -L -o chrome-arm64.zip \
+  https://storage.googleapis.com/chrome-for-testing-public/<version>/linux-arm64/chrome-linux-arm64.zip
+python3 -c "import zipfile; zipfile.ZipFile('chrome-arm64.zip').extractall('$HOME/.local/share/chrome-arm64/')"
+chmod -R +x $HOME/.local/share/chrome-arm64/chrome-linux-arm64/   # helper binaries need it too
+
+# Tell Puppeteer to use it
+echo 'PUPPETEER_EXECUTABLE_PATH=$HOME/.local/share/chrome-arm64/chrome-linux-arm64/chrome' >> .env
+```
+
+Chrome also needs its shared libraries. On Debian/Ubuntu ARM64:
+
+```bash
+sudo apt-get install -y libatk1.0-0t64 libatk-bridge2.0-0t64 libcups2t64 libdrm2 \
+  libxkbcommon0 libxcomposite1 libxdamage1 libxfixes3 libxrandr2 libgbm1 \
+  libpango-1.0-0 libcairo2 libasound2t64 libnss3 libnspr4 fonts-liberation
+```
+
+MongoDB has no ARM64 package in the default Ubuntu repos. Download the tarball
+from [fastdl.mongodb.org](https://fastdl.mongodb.org) instead.
+
+> If `npm install` reports success but Chrome is missing, your npm version gates
+> package install scripts. Run `npx puppeteer browsers install chrome` manually.
+
+## 🧪 Testing
+
+```bash
+npm test
+```
+
+The suite is dependency-free (no Jest/Vitest) and covers the logic that
+silently corrupts stored orders:
+
+| Suite | What it pins down |
+|---|---|
+| `tests/timestamp.test.js` | `parseGrabTimestamp` converts MYT (UTC+8) correctly, infers the year, and is host-timezone independent |
+| `tests/extractor.test.js` | Poll dedup, bounded dedup cache, currency-agnostic amount parsing |
+| `tests/order-model.test.js` | `toOrderDate`, the unique `(orderNumber, orderDate)` index, schema validators |
+| `tests/state-sync.test.js` | State sync updates real orders and never fabricates zero-value stubs |
+| `tests/api-session.test.js` | Session cookie behaviour and auth responses, by starting a real server |
+
+Tests needing MongoDB skip automatically when none is reachable, so a bare
+checkout still runs. To run them fully, point at a scratch database:
+
+```bash
+TEST_MONGODB_URI=mongodb://127.0.0.1:27017/grab_fetcher_test npm test
+```
+
+> The suite drops that database. Never point `TEST_MONGODB_URI` at production.
+
+There is also a live check against the real Grab portal that only ever logs in
+with a deliberately non-existent username:
+
+```bash
+CHROME_BIN=/path/to/chrome node tests/smoke-live-login.js
+```
+
+It verifies the login selectors have not drifted upstream and that a bad
+username is reported as such rather than as a scraper error.
+
 ## 🔐 Authentication
 
 The dashboard is protected with session-based authentication.
