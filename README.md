@@ -361,7 +361,10 @@ Description=Run Grab Order Fetcher every 5 minutes during operating hours
 Requires=grab-fetcher.service
 
 [Timer]
-OnCalendar=*-*-* 03:05..14:35:00/5
+# Two windows, matching OPERATING_HOURS: 11:00-15:00 and 17:00-22:30 MYT.
+# systemd is configured in UTC below; the in-code window check is a second gate.
+OnCalendar=*-*-* 03:05..07:00:00/5
+OnCalendar=*-*-* 09:00..14:35:00/5
 RandomizedDelaySec=30
 Persistent=false
 
@@ -369,7 +372,10 @@ Persistent=false
 WantedBy=timers.target
 EOF
 ```
-> **Note:** The `OnCalendar` schedule above is in UTC for Malaysia Time (MYT, UTC+8): `03:00..14:30 UTC = 11:00 AM..10:30 PM MYT`. Adjust the hours to match your local timezone if different.
+> **Note:** `OnCalendar` is in UTC here; subtract 8 hours to get MYT. The ranges
+> above are `03:05–07:00` UTC (11:05–15:00 MYT) and `09:00–14:35` UTC
+> (17:00–22:35 MYT). `npm start` also enforces `OPERATING_HOURS` in code, so the
+> fetcher stays off the portal even if this timer drifts.
 
 **5. Enable and start:**
 ```bash
@@ -424,9 +430,9 @@ sudo apt install chromium-browser
 
 #### Schedule Details
 
-- **Operating Hours:** 11:00 AM – 10:30 PM Malaysia Time (GMT+8), daily
-- **Polling Frequency:** Every 5 minutes during active period
-- **Executions per day:** ~138 runs
+- **Operating Hours:** 11:00–15:00 and 17:00–22:30 Malaysia Time (GMT+8), daily, configured via `OPERATING_HOURS`. The bot stays completely off the Grab portal between 15:00 and 17:00, and overnight.
+- **Polling Frequency:** Every 5 minutes during the active windows (`POLLING_INTERVAL_MINUTES`)
+- **Executions per day:** ~126 runs
 - **Timezone:** MYT is calculated from UTC in-code, so the server's local timezone does not matter
 
 #### Optional: Nginx Reverse Proxy

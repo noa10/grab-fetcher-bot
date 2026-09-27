@@ -13,6 +13,10 @@ const {
   cleanupOldFiles
 } = require('./utils/helpers');
 
+// Default trading windows in MYT (UTC+8): a mid-afternoon break, so the bot
+// stays off the portal between 15:00 and 17:00.
+const DEFAULT_OPERATING_HOURS = '11:00-15:00,17:00-22:30';
+
 /**
  * Read a possibly-dotted path off a mongoose document (or plain object).
  * e.g. resolvePath(doc, 'pricing.total') -> number
@@ -54,7 +58,7 @@ class GrabOrderFetcher {
     this.screenshotService = new ScreenshotService();
     this.isRunning = false;
     this.isPolling = false;
-    this.pollingInterval = parseInt(process.env.POLLING_INTERVAL_MINUTES) || 2;
+    this.pollingInterval = parseInt(process.env.POLLING_INTERVAL_MINUTES) || 5;
     this.maxRetries = parseInt(process.env.MAX_RETRIES) || 3;
     this.cronJob = null;
   }
@@ -93,18 +97,65 @@ class GrabOrderFetcher {
   }
 
   /**
-   * Check if we are within operating hours (11:00 AM - 10:30 PM MYT / GMT+8)
+   * Get the MYT (UTC+8) time of day in minutes since midnight.
+   * Malaysia has no DST, so a fixed +8 offset is correct year-round.
    */
-  isWithinOperatingHours() {
-    const now = new Date();
-    const utcHours = now.getUTCHours();
-    const utcMinutes = now.getUTCMinutes();
-    const mytTotalMinutes = ((utcHours + 8) % 24) * 60 + utcMinutes;
-    
-    const startMinutes = 11 * 60;
-    const endMinutes = 22 * 60 + 30;
-    
-    return mytTotalMinutes >= startMinutes && mytTotalMinutes <= endMinutes;
+  static getMytMinutesOfDay(date = new Date()) {
+    return ((date.getUTCHours() + 8) % 24) * 60 + date.getUTCMinutes();
+  }
+
+  /**
+   * Parse an operating window like "11:00-15:00" into minutes since midnight.
+   */
+  static parseWindow(spec) {
+    const match = String(spec).trim().match(/^(\d{1,2}):?(\d{2})?\s*-\s*(\d{1,2}):?(\d{2})?$/);
+    if (!match) {
+      throw new Error(`Invalid operating window "${spec}". Expected "HH:MM-HH:MM", e.g. "11:00-15:00"`);
+    }
+    const [, sh, sm, eh, em] = match;
+    const start = parseInt(sh) * 60 + parseInt(sm || 0);
+    const end = parseInt(eh) * 60 + parseInt(em || 0);
+    if (start > end) {
+      throw new Error(`Invalid operating window "${spec}": start must not be after end`);
+    }
+    return { start, end };
+  }
+
+  /**
+   * Operating windows in MYT. Defaults to the merchant's trading hours with a
+   * mid-afternoon break, overridable via OPERATING_HOURS (comma-separated).
+   *
+   *   OPERATING_HOURS=11:00-15:00,17:00-22:30
+   *
+   * Outside every window pollForOrders() returns immediately, so the cron job
+   * can keep a simple "every N minutes" schedule and this decides whether to act.
+   */
+  static getOperatingWindows() {
+    const spec = process.env.OPERATING_HOURS || DEFAULT_OPERATING_HOURS;
+    return spec
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(GrabOrderFetcher.parseWindow);
+  }
+
+  /**
+   * Check whether we are inside any operating window (MYT / GMT+8).
+   */
+  isWithinOperatingHours(date = new Date()) {
+    const now = GrabOrderFetcher.getMytMinutesOfDay(date);
+    return GrabOrderFetcher.getOperatingWindows().some(
+      ({ start, end }) => now >= start && now <= end
+    );
+  }
+
+  /**
+   * Human-readable schedule for logs and the dashboard.
+   */
+  static describeSchedule() {
+    const windows = GrabOrderFetcher.getOperatingWindows();
+    const fmt = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
+    return windows.map(w => `${fmt(w.start)}-${fmt(w.end)}`).join(', ');
   }
 
   /**
@@ -117,7 +168,7 @@ class GrabOrderFetcher {
         return;
       }
 
-      logger.bot(`Starting polling every ${this.pollingInterval} minutes (11:00 AM - 10:30 PM MYT)...`);
+      logger.bot(`Starting polling every ${this.pollingInterval} minutes (MYT windows: ${GrabOrderFetcher.describeSchedule()})...`);
       this.isRunning = true;
 
       // Set up cron job for polling
