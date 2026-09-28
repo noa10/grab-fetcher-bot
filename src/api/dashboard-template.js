@@ -1849,6 +1849,7 @@ function getDashboardHTML() {
             if (window.cohortChartInstance) { window.cohortChartInstance.destroy(); window.cohortChartInstance = null; }
 
             state.currentView = view;
+            history.replaceState(null, '', '/dashboard?view=' + view);
             document.querySelectorAll('.view').forEach(v => v.classList.remove('active'));
             document.querySelectorAll('.nav-item[data-view]').forEach(n => n.classList.remove('active'));
 
@@ -2130,7 +2131,8 @@ function getDashboardHTML() {
                 if (e.key === 'Enter') applyFilters();
             });
 
-            switchView('dashboard');
+            const requestedView = new URLSearchParams(window.location.search).get('view');
+            switchView(['dashboard', 'orders', 'marketing'].includes(requestedView) ? requestedView : 'dashboard');
             setInterval(() => {
                 updateDateDisplays();
                 if (state.currentView === 'dashboard') {
