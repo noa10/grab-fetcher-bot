@@ -263,10 +263,20 @@ orderSchema.pre('save', async function() {
 });
 
 // Helper: get date-only (midnight UTC) from a timestamp
+/**
+ * Midnight (MYT, UTC+8) of the day an order was placed, as a UTC Date.
+ *
+ * The MYT day begins at 16:00 UTC the previous day, so truncating the UTC
+ * timestamp to midnight files an order placed between 00:00 and 08:00 MYT under
+ * the previous day. Since the dedup filter is (orderNumber, orderDate), that
+ * mismatch also creates a duplicate row whenever the History tab lists the order
+ * under the correct MYT day. Malaysia has no DST, so a fixed +8 offset is safe.
+ */
 orderSchema.statics.toOrderDate = function(timestamp) {
   const d = timestamp instanceof Date ? new Date(timestamp) : new Date(timestamp || Date.now());
-  d.setUTCHours(0, 0, 0, 0);
-  return d;
+  // Shift forward by the MYT offset, take the UTC calendar day, then shift back.
+  const shifted = new Date(d.getTime() + 8 * 60 * 60 * 1000);
+  return new Date(Date.UTC(shifted.getUTCFullYear(), shifted.getUTCMonth(), shifted.getUTCDate()) - 8 * 60 * 60 * 1000);
 };
 
 // Static methods

@@ -7,6 +7,7 @@ const path = require('path');
 
 const FILES = [
   './timestamp.test.js',
+  './order-date.test.js',
   './operating-hours.test.js',
   './extractor.test.js',
   './order-model.test.js',

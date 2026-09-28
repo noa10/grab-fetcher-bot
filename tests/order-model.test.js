@@ -42,11 +42,17 @@ const minimal = (overrides = {}) => ({
 
 const tests = [
   {
-    name: 'toOrderDate normalises to midnight UTC',
+    name: 'toOrderDate normalises to midnight MYT',
     fn: async () => {
       await available();
+      // 21:45 MYT on 27 Sep; midnight MYT is 16:00 UTC on 26 Sep, not 00:00 UTC.
       const d = Order.toOrderDate(new Date('2026-09-27T13:45:12.345Z'));
-      assert.strictEqual(d.toISOString(), '2026-09-27T00:00:00.000Z');
+      assert.strictEqual(d.toISOString(), '2026-09-26T16:00:00.000Z');
+      assert.strictEqual(
+        d.toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' }),
+        '2026-09-27',
+        'the stored day must read as 27 Sep in MYT'
+      );
     },
   },
   {

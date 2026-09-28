@@ -120,11 +120,24 @@ const tests = [
   },
   {
     name: 'MYT timestamps flow into orderDate consistently',
-    fn: () => {
+    fn: async () => {
       const Order = require('../src/models/Order');
       const ts = parseGrabTimestamp('27 Sep, Sun, 09:15 AM', new Date('2026-09-27T12:00:00Z'));
-      // 09:15 MYT = 01:15 UTC on the same calendar day.
-      assert.strictEqual(Order.toOrderDate(ts).toISOString(), '2026-09-27T00:00:00.000Z');
+      // 09:15 MYT on 27 Sep, so the day label is 27 Sep and midnight MYT is
+      // 16:00 UTC on 26 Sep.
+      assert.strictEqual(Order.toOrderDate(ts).toISOString(), '2026-09-26T16:00:00.000Z');
+
+      // The case that was wrong before: an order placed after midnight MYT
+      // lands on the previous UTC calendar day, so a UTC truncation files it
+      // under the wrong date and the dedup key stops matching.
+      const early = parseGrabTimestamp('28 Sep, Mon, 04:18 AM', new Date('2026-09-28T00:00:00Z'));
+      assert.strictEqual(early.toISOString(), '2026-09-27T20:18:00.000Z');
+      assert.strictEqual(Order.toOrderDate(early).toISOString(), '2026-09-27T16:00:00.000Z');
+      assert.strictEqual(
+        Order.toOrderDate(early).toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' }),
+        '2026-09-28',
+        'an 04:18 MYT order belongs to 28 Sep'
+      );
     },
   },
 ];

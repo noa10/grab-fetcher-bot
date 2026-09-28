@@ -135,8 +135,9 @@ const tests = [
 
       const docs = await Order.find({ orderNumber: 'ORD-YDAY' });
       assert.strictEqual(docs.length, 1, 'still exactly one document');
-      assert.strictEqual(docs[0].orderDate.toISOString(), '2026-09-26T00:00:00.000Z',
-        'orderDate must come from the order timestamp, not today');
+      // Midnight MYT, not midnight UTC — see Order.toOrderDate.
+      assert.strictEqual(docs[0].orderDate.toISOString(), '2026-09-25T16:00:00.000Z',
+        'orderDate must be midnight MYT of the order timestamp day, not today');
       assert.strictEqual(docs[0].status, 'completed');
       assert.strictEqual(docs[0].customerName, 'Siti', 'real data must be preserved');
       assert.strictEqual(docs[0].pricing.total, 12, 'real total must be preserved');
@@ -171,7 +172,7 @@ const tests = [
 
       const doc = await Order.findOne({ orderNumber: 'ORD-BRAND-NEW' });
       assert.ok(doc, 'the new order should be registered');
-      assert.strictEqual(doc.orderDate.toISOString(), '2026-09-25T00:00:00.000Z',
+      assert.strictEqual(doc.orderDate.toISOString(), '2026-09-24T16:00:00.000Z',
         'the order must be dated from its own timestamp, not today');
       assert.strictEqual(doc.orderTimestamp.toISOString(), ts.toISOString());
 
@@ -205,10 +206,10 @@ const tests = [
 
       const docs = await Order.find({ orderNumber }).sort({ orderDate: 1 });
       assert.strictEqual(docs.length, 2, 'both dated orders still exist');
-      assert.strictEqual(docs[0].orderDate.toISOString(), '2026-09-20T00:00:00.000Z');
+      assert.strictEqual(docs[0].orderDate.toISOString(), '2026-09-19T16:00:00.000Z');
       assert.strictEqual(docs[0].status, 'completed', 'the 20 Sep order must be untouched');
       assert.strictEqual(docs[0].customerName, 'Old Customer');
-      assert.strictEqual(docs[1].orderDate.toISOString(), '2026-09-27T00:00:00.000Z');
+      assert.strictEqual(docs[1].orderDate.toISOString(), '2026-09-26T16:00:00.000Z');
       assert.strictEqual(docs[1].status, 'completed', 'the 27 Sep order is updated');
       assert.strictEqual(docs[1].driverStatus, 'Delivered');
     },
