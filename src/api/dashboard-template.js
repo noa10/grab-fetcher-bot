@@ -1656,7 +1656,7 @@ function getDashboardHTML() {
                         state.pagination.currentPage = page;
                         fetchOrders();
                     }
-                }
+                });
             });
         }
 
