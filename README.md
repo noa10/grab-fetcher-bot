@@ -358,6 +358,22 @@ WantedBy=multi-user.target
 EOF
 ```
 
+> **If `node` is not at a stable path**, wrap it. Some toolchain managers install
+> node under a versioned directory (e.g. `~/.hermes/tools/node-<version>-<arch>`),
+> which changes on upgrade and would break a pinned `ExecStart`. A small wrapper
+> that resolves node at run time avoids a silent failure:
+>
+> ```sh
+> #!/bin/sh
+> # ~/.local/bin/grab-fetcher-node
+> for c in "$NODE_BIN" "$HOME"/.hermes/tools/node-*/bin/node; do
+>   [ -x "$c" ] && exec "$c" "$@"
+> done
+> command -v node >/dev/null 2>&1 && exec node "$@"
+> echo "no node runtime found (set NODE_BIN)" >&2; exit 127
+> ```
+> Then use `ExecStart=/usr/bin/xvfb-run -a ~/.local/bin/grab-fetcher-node src/github-actions-runner.js`.
+
 **4. Create the timer unit:**
 ```bash
 sudo tee /etc/systemd/system/grab-fetcher.timer > /dev/null << 'EOF'
