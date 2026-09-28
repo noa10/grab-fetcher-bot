@@ -274,6 +274,29 @@ function parseGrabTimestamp(str, referenceDate = new Date()) {
   return parsed;
 }
 
+/**
+ * Calendar-day helpers anchored to MYT (UTC+8).
+ *
+ * The dashboard speaks MYT calendar days, but serverless hosts run in UTC, so
+ * parsing a YYYY-MM-DD filter value with `new Date()` treats it as a UTC day
+ * and shifts every boundary by 8 hours — hiding orders placed between 00:00
+ * and 07:59 MYT. Stored orderTimestamp values are true UTC instants, so
+ * filters must query against the real instants of the MYT day boundaries.
+ */
+
+// YYYY-MM-DD of the current MYT calendar day (en-CA renders in that format).
+function getMalaysiaDateString(date = new Date()) {
+  return date.toLocaleDateString('en-CA', { timeZone: 'Asia/Kuala_Lumpur' });
+}
+
+function mytDayStart(dateStr) {
+  return new Date(`${dateStr}T00:00:00+08:00`);
+}
+
+function mytDayEnd(dateStr) {
+  return new Date(`${dateStr}T23:59:59.999+08:00`);
+}
+
 const cleanupOldFiles = async (dirPath, maxAgeHours = 24) => {
   try {
     const files = await fs.readdir(dirPath);
@@ -312,5 +335,8 @@ module.exports = {
   isWithinLastMinutes,
   generateScreenshotFilename,
   cleanupOldFiles,
-  parseGrabTimestamp
+  parseGrabTimestamp,
+  getMalaysiaDateString,
+  mytDayStart,
+  mytDayEnd
 };

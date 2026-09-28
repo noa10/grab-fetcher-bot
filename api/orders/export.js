@@ -1,6 +1,7 @@
 // Vercel serverless function for exporting orders
 const database = require('../../src/config/database');
 const Order = require('../../src/models/Order');
+const { mytDayStart, mytDayEnd } = require('../../src/utils/helpers');
 
 module.exports = async (req, res) => {
   // Set CORS headers
@@ -34,10 +35,12 @@ module.exports = async (req, res) => {
     }
     
     if (req.query.startDate && req.query.endDate) {
-      filter.orderTimestamp = {
-        $gte: new Date(req.query.startDate),
-        $lte: new Date(req.query.endDate)
-      };
+      const startDate = mytDayStart(req.query.startDate);
+      const endDate = mytDayEnd(req.query.endDate);
+      if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
+        throw new Error('Invalid date format');
+      }
+      filter.orderTimestamp = { $gte: startDate, $lte: endDate };
     } else if (req.query.days) {
       const days = parseInt(req.query.days);
       const cutoffDate = new Date();

@@ -1,5 +1,6 @@
 const database = require('../../src/config/database');
 const Order = require('../../src/models/Order');
+const { getMalaysiaDateString, mytDayStart } = require('../../src/utils/helpers');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -19,14 +20,12 @@ module.exports = async (req, res) => {
   try {
     await database.connect();
 
-    const malaysiaTime = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
-    const todayMYT = new Date(malaysiaTime);
-    todayMYT.setHours(0, 0, 0, 0);
-    const tomorrowMYT = new Date(todayMYT);
-    tomorrowMYT.setDate(todayMYT.getDate() + 1);
-    const weekStartMYT = new Date(todayMYT);
-    weekStartMYT.setDate(todayMYT.getDate() - todayMYT.getDay());
-    const monthStartMYT = new Date(todayMYT.getFullYear(), todayMYT.getMonth(), 1);
+    const todayStr = getMalaysiaDateString();
+    const todayMYT = mytDayStart(todayStr);
+    const tomorrowMYT = new Date(todayMYT.getTime() + 24 * 60 * 60 * 1000);
+    const mytWeekday = new Date(`${todayStr}T00:00:00Z`).getUTCDay();
+    const weekStartMYT = new Date(todayMYT.getTime() - mytWeekday * 24 * 60 * 60 * 1000);
+    const monthStartMYT = mytDayStart(`${todayStr.slice(0, 8)}01`);
 
     const [
       totalStats, todayStats, weekStats, monthStats,

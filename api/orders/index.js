@@ -1,6 +1,7 @@
 // Vercel serverless function for orders API
 const database = require('../../src/config/database');
 const Order = require('../../src/models/Order');
+const { mytDayStart, mytDayEnd } = require('../../src/utils/helpers');
 
 module.exports = async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -31,23 +32,23 @@ module.exports = async (req, res) => {
     }
     
     if (req.query.date) {
-      const date = new Date(req.query.date);
-      const nextDay = new Date(date);
-      nextDay.setDate(date.getDate() + 1);
-      filter.orderTimestamp = {
-        $gte: date,
-        $lt: nextDay
-      };
+      const dayStart = mytDayStart(req.query.date);
+      if (isNaN(dayStart.getTime())) throw new Error('Invalid date format');
+      // MYT is UTC+8 with no DST, so +24h lands exactly on the next MYT midnight.
+      const nextDay = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+      filter.orderTimestamp = { $gte: dayStart, $lt: nextDay };
     }
 
     if (req.query.startDate || req.query.endDate) {
       const dateFilter = {};
       if (req.query.startDate) {
-        dateFilter.$gte = new Date(req.query.startDate);
+        const startDate = mytDayStart(req.query.startDate);
+        if (isNaN(startDate.getTime())) throw new Error('Invalid start date');
+        dateFilter.$gte = startDate;
       }
       if (req.query.endDate) {
-        const endDate = new Date(req.query.endDate);
-        endDate.setHours(23, 59, 59, 999);
+        const endDate = mytDayEnd(req.query.endDate);
+        if (isNaN(endDate.getTime())) throw new Error('Invalid end date');
         dateFilter.$lte = endDate;
       }
       filter.orderTimestamp = { ...filter.orderTimestamp, ...dateFilter };

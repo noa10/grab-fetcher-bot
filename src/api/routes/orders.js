@@ -3,6 +3,7 @@ const rateLimit = require('express-rate-limit');
 const router = express.Router();
 const Order = require('../../models/Order');
 const { sanitizeSortField, sanitizeSortOrder, buildSafeRegexQuery, sanitizeCsvField } = require('../../utils/inputSanitizer');
+const { mytDayStart, mytDayEnd, getMalaysiaDateString } = require('../../utils/helpers');
 const logger = require('../../utils/logger');
 
 const apiLimiter = rateLimit({
@@ -30,26 +31,25 @@ router.get('/', async (req, res) => {
     }
     
     if (req.query.date) {
-      const date = new Date(req.query.date);
-      if (isNaN(date.getTime())) {
+      const dayStart = mytDayStart(req.query.date);
+      if (isNaN(dayStart.getTime())) {
         throw new Error('Invalid date format');
       }
-      const nextDay = new Date(date);
-      nextDay.setDate(date.getDate() + 1);
-      filter.orderTimestamp = { $gte: date, $lt: nextDay };
+      // MYT is UTC+8 with no DST, so +24h lands exactly on the next MYT midnight.
+      const nextDay = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+      filter.orderTimestamp = { $gte: dayStart, $lt: nextDay };
     }
 
     if (req.query.startDate || req.query.endDate) {
       const dateFilter = {};
       if (req.query.startDate) {
-        const startDate = new Date(req.query.startDate);
+        const startDate = mytDayStart(req.query.startDate);
         if (isNaN(startDate.getTime())) throw new Error('Invalid start date');
         dateFilter.$gte = startDate;
       }
       if (req.query.endDate) {
-        const endDate = new Date(req.query.endDate);
+        const endDate = mytDayEnd(req.query.endDate);
         if (isNaN(endDate.getTime())) throw new Error('Invalid end date');
-        endDate.setHours(23, 59, 59, 999);
         dateFilter.$lte = endDate;
       }
       filter.orderTimestamp = { ...filter.orderTimestamp, ...dateFilter };
@@ -182,13 +182,12 @@ router.get('/recent', async (req, res) => {
 
 router.get('/stats', async (req, res) => {
   try {
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay());
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const todayStr = getMalaysiaDateString();
+    const today = mytDayStart(todayStr);
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
+    const mytWeekday = new Date(`${todayStr}T00:00:00Z`).getUTCDay();
+    const weekStart = new Date(today.getTime() - mytWeekday * 24 * 60 * 60 * 1000);
+    const monthStart = mytDayStart(`${todayStr.slice(0, 8)}01`);
 
     const [
       totalStats, todayStats, weekStats, monthStats,
@@ -430,8 +429,8 @@ router.get('/export/csv', async (req, res) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.startDate && req.query.endDate) {
-      const startDate = new Date(req.query.startDate);
-      const endDate = new Date(req.query.endDate);
+      const startDate = mytDayStart(req.query.startDate);
+      const endDate = mytDayEnd(req.query.endDate);
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
         throw new Error('Invalid date format');
       }
@@ -494,8 +493,8 @@ router.get('/export/json', async (req, res) => {
     const filter = {};
     if (req.query.status) filter.status = req.query.status;
     if (req.query.startDate && req.query.endDate) {
-      const startDate = new Date(req.query.startDate);
-      const endDate = new Date(req.query.endDate);
+      const startDate = mytDayStart(req.query.startDate);
+      const endDate = mytDayEnd(req.query.endDate);
       if (isNaN(startDate.getTime()) || isNaN(endDate.getTime())) {
         throw new Error('Invalid date format');
       }

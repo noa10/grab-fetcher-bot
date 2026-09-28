@@ -1,6 +1,7 @@
 // Vercel serverless function for order statistics
 const database = require('../../src/config/database');
 const Order = require('../../src/models/Order');
+const { getMalaysiaDateString, mytDayStart } = require('../../src/utils/helpers');
 
 module.exports = async (req, res) => {
   // Set CORS headers
@@ -22,18 +23,17 @@ module.exports = async (req, res) => {
     // Connect to database
     await database.connect();
 
-    // Get today's date range
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const tomorrow = new Date(today);
-    tomorrow.setDate(today.getDate() + 1);
+    // Get today's date range (MYT calendar day)
+    const todayStr = getMalaysiaDateString();
+    const today = mytDayStart(todayStr);
+    const tomorrow = new Date(today.getTime() + 24 * 60 * 60 * 1000);
 
     // Get this week's date range
-    const weekStart = new Date(today);
-    weekStart.setDate(today.getDate() - today.getDay());
-    
+    const mytWeekday = new Date(`${todayStr}T00:00:00Z`).getUTCDay();
+    const weekStart = new Date(today.getTime() - mytWeekday * 24 * 60 * 60 * 1000);
+
     // Get this month's date range
-    const monthStart = new Date(today.getFullYear(), today.getMonth(), 1);
+    const monthStart = mytDayStart(`${todayStr.slice(0, 8)}01`);
 
     // Run aggregation queries
     const [
