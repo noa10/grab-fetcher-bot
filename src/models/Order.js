@@ -140,6 +140,21 @@ const orderSchema = new mongoose.Schema({
       default: 'MYR'
     }
   },
+
+  // POS fields the merchant sales export carries but the portal drawer does not.
+  // Declared explicitly because Mongoose runs in strict mode and silently drops
+  // anything not listed here.
+  pax: Number,
+  invoiceNo: String,
+  serviceCharge: Number,
+  sst: Number,
+  rounding: Number,
+
+  // Provenance: set when a row was repaired from a merchant sales export rather
+  // than scraped from the portal, so repaired data is never mistaken for a
+  // live scrape and can be audited or reverted.
+  backfilledFrom: String,
+  backfilledAt: Date,
   
   // Delivery information
   deliveryInfo: {
