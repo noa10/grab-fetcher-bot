@@ -428,11 +428,13 @@ class OrderExtractor {
             }
             if (timestampEl) {
               data.orderTimestamp = timestampEl.textContent.trim();
-            } else {
-              // Legacy fallback: hashed css-e4jgmp-DriverDisplay
-              const legacyTsEl = driverCardBody.querySelector('.css-e4jgmp-DriverDisplay');
-              if (legacyTsEl) {
-                data.orderTimestamp = legacyTsEl.textContent.trim();
+            } else if (driverCardBody) {
+              // Fallback by shape, not by class: the hashed CSS-module names rotate
+              // on every Grab deploy. See the note in extractOrdersForStateUpdate.
+              const m = driverCardBody.innerText
+                .match(/\d{1,2}\s+[A-Za-z]{3},\s*[A-Za-z]+,?\s*\d{1,2}:\d{2}\s*(AM|PM)/i);
+              if (m) {
+                data.orderTimestamp = m[0];
               }
             }
 
@@ -842,14 +844,34 @@ class OrderExtractor {
             await sleep(1000);
             const drawerData = await this.page.evaluate(() => {
               const driverStateEl = document.querySelector('[data-testid="driverState"]');
-              // Timestamp lives in the Driver card, same as the full extractor reads it.
-              const driverCard = document.querySelector('.dui-card-head-title');
+              // Timestamp lives in the Driver card. Preferred anchor is structural —
+              // it is the next non-empty sibling of driverState inside the same
+              // .dui-col. Never key this on a hashed CSS-module class alone: those
+              // change on every Grab deploy, and when they do the state sync
+              // silently stops dating orders (observed live on 27 Sep 2026, when
+              // css-e4jgmp-DriverDisplay became css-ot2nvz).
+              const driverCard = Array.from(document.querySelectorAll('.dui-card-head-title'))
+                .find(t => t.textContent.trim() === 'Driver');
+              const body = driverCard?.closest('.dui-card')?.querySelector('.dui-card-body');
+
               let timestampText = '';
-              if (driverCard && driverCard.textContent.trim() === 'Driver') {
-                const body = driverCard.closest('.dui-card')?.querySelector('.dui-card-body');
-                const tsEl = body?.querySelector('.css-e4jgmp-DriverDisplay');
-                if (tsEl) timestampText = tsEl.textContent.trim();
+
+              if (driverStateEl?.parentElement) {
+                for (const sib of driverStateEl.parentElement.children) {
+                  if (sib !== driverStateEl && sib.textContent.trim()) {
+                    timestampText = sib.textContent.trim();
+                    break;
+                  }
+                }
               }
+
+              // Fallback: scan the Driver card text for the portal's timestamp shape
+              // ("27 Sep, Sun, 12:26 PM"), so this survives a further class rename.
+              if (!timestampText && body) {
+                const m = body.innerText.match(/\d{1,2}\s+[A-Za-z]{3},\s*[A-Za-z]+,?\s*\d{1,2}:\d{2}\s*(AM|PM)/i);
+                if (m) timestampText = m[0];
+              }
+
               return {
                 driverStatus: driverStateEl ? driverStateEl.textContent.trim() : '',
                 timestampText

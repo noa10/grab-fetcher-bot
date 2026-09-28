@@ -7,7 +7,10 @@ const mongoose = require('mongoose');
 
 const name = 'API session cookie';
 
-const MONGODB_URI = process.env.TEST_MONGODB_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/grab_fetcher_test';
+// This suite spawns a real server and creates/uses an admin account, so it must
+// never inherit a developer's real MONGODB_URI or credentials. Only an explicit
+// TEST_MONGODB_URI is honoured.
+const MONGODB_URI = process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017/grab_fetcher_test';
 const PORT = 63999;
 const BASE = `http://127.0.0.1:${PORT}`;
 
@@ -28,6 +31,13 @@ async function startServer(env) {
       ADMIN_PASSWORD: 'testpassword123',
       LOG_LEVEL: 'error',
       ...env,
+      // server.js calls dotenv.config(), which only fills in variables that are
+      // NOT already set — so the values above win. The spread of process.env can
+      // still carry a developer's real ADMIN_USERNAME in, which would make these
+      // tests authenticate against their own account instead. Force the test
+      // credentials last so the suite is deterministic on a machine with a .env.
+      ADMIN_USERNAME: env.ADMIN_USERNAME || 'admin',
+      ADMIN_PASSWORD: env.ADMIN_PASSWORD || 'testpassword123',
     },
     stdio: ['ignore', 'pipe', 'pipe'],
   });

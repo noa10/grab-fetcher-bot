@@ -5,7 +5,10 @@ const mongoose = require('mongoose');
 
 const name = 'Order model';
 
-const MONGODB_URI = process.env.TEST_MONGODB_URI || process.env.MONGODB_URI || 'mongodb://127.0.0.1:27017/grab_fetcher_test';
+// This suite inserts and deletes documents, so it must never inherit a real
+// MONGODB_URI. Only an explicit TEST_MONGODB_URI is honoured. For read-only
+// inspection of production data use scripts like inspect-stored.js instead.
+const MONGODB_URI = process.env.TEST_MONGODB_URI || 'mongodb://127.0.0.1:27017/grab_fetcher_test';
 
 let Order;
 let connected = false;
