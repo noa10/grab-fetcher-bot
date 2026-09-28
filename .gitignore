@@ -67,3 +67,7 @@ temp/
 
 # Vercel
 .vercel
+
+# Oh My Openagent
+.omo/
+.sisyphus/
