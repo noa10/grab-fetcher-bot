@@ -678,6 +678,24 @@ function getDashboardHTML() {
 
         .pagination-info { font-size: 13px; color: var(--text-muted); }
         .pagination-controls { display: flex; gap: 8px; }
+        .pagination-extras { display: flex; align-items: center; gap: 16px; }
+        .pagination-extra {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .pagination-select {
+            padding: 5px 8px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--radius-sm);
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            font-size: 13px;
+        }
+        .pagination-select:disabled { opacity: 0.5; cursor: not-allowed; }
+        .page-jump-input { width: 60px; }
 
         .page-btn {
             padding: 6px 12px;
@@ -889,6 +907,7 @@ function getDashboardHTML() {
             .show-all-btn { margin-left: 0; }
             .pagination { flex-wrap: wrap; gap: 12px; justify-content: center; }
             .pagination-controls { flex-wrap: wrap; justify-content: center; }
+            .pagination-extras { flex-wrap: wrap; justify-content: center; }
             .chart-container { height: 220px; }
             .modal { margin: 12px; max-height: 85vh; }
             .toast { left: 16px; right: 16px; bottom: 16px; }
@@ -1078,8 +1097,8 @@ function getDashboardHTML() {
                         <span class="date-text" id="ordersDate"></span>
                         <span class="timezone">(MYT GMT+8)</span>
                         <div class="period-selector">
-                            <button class="period-btn" data-period="today">Today</button>
-                            <button class="period-btn active" data-period="7d">7 Days</button>
+                            <button class="period-btn active" data-period="today">Today</button>
+                            <button class="period-btn" data-period="7d">7 Days</button>
                             <button class="period-btn" data-period="30d">30 Days</button>
                         </div>
                         <button class="show-all-btn" id="showAllOrders">Show All Orders</button>
@@ -1159,6 +1178,19 @@ function getDashboardHTML() {
                         <div class="pagination">
                             <div class="pagination-info" id="paginationInfo">Showing 0 of 0 orders</div>
                             <div class="pagination-controls" id="paginationControls"></div>
+                            <div class="pagination-extras">
+                                <label class="pagination-extra" for="perPageSelect">Rows per page
+                                    <select id="perPageSelect" class="pagination-select">
+                                        <option value="20">20</option>
+                                        <option value="50">50</option>
+                                        <option value="100">100</option>
+                                    </select>
+                                </label>
+                                <label class="pagination-extra" for="pageJumpInput">Page
+                                    <input type="number" id="pageJumpInput" class="pagination-select page-jump-input" min="1" value="1">
+                                    <button class="page-btn" id="pageJumpBtn">Go</button>
+                                </label>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -1258,7 +1290,7 @@ function getDashboardHTML() {
             summary: null,
             currentView: 'dashboard',
             showAllOrders: false,
-            activePeriod: '7d'
+            activePeriod: 'today'
         };
 
         function getMalaysiaDate() {
@@ -1590,6 +1622,18 @@ function getDashboardHTML() {
             const end = Math.min(p.currentPage * p.limit, p.totalCount);
             info.textContent = p.totalCount > 0 ? \`Showing \${start}-\${end} of \${p.totalCount} orders\` : 'No orders';
 
+            const perPageSelect = document.getElementById('perPageSelect');
+            perPageSelect.value = String(p.limit);
+            const jumpInput = document.getElementById('pageJumpInput');
+            const jumpBtn = document.getElementById('pageJumpBtn');
+            const multiplePages = p.totalPages > 1;
+            jumpInput.max = String(Math.max(p.totalPages, 1));
+            jumpInput.disabled = !multiplePages;
+            jumpBtn.disabled = !multiplePages;
+            if (document.activeElement !== jumpInput) {
+                jumpInput.value = String(p.currentPage);
+            }
+
             let html = '';
             html += \`<button class="page-btn" \${p.currentPage <= 1 ? 'disabled' : ''} data-page="\${p.currentPage - 1}">&larr; Prev</button>\`;
 
@@ -1612,8 +1656,20 @@ function getDashboardHTML() {
                         state.pagination.currentPage = page;
                         fetchOrders();
                     }
-                });
+                }
             });
+        }
+
+        function jumpToPage() {
+            const input = document.getElementById('pageJumpInput');
+            let page = parseInt(input.value);
+            if (isNaN(page)) return;
+            page = Math.min(Math.max(1, page), Math.max(state.pagination.totalPages, 1));
+            input.value = String(page);
+            if (page !== state.pagination.currentPage) {
+                state.pagination.currentPage = page;
+                fetchOrders();
+            }
         }
 
         function showOrderModal(order) {
@@ -1837,8 +1893,9 @@ function getDashboardHTML() {
             document.getElementById('statusFilter').value = '';
             document.getElementById('orderTypeFilter').value = '';
             state.filters = { search: '', status: '', orderType: '', dateFrom: '', dateTo: '' };
+            state.showAllOrders = false;
             state.pagination.currentPage = 1;
-            state.activePeriod = '7d';
+            state.activePeriod = 'today';
             updateDateDisplays();
             updatePeriodButtons();
             fetchOrders();
@@ -1864,7 +1921,7 @@ function getDashboardHTML() {
                 document.querySelector('[data-view="orders"]').classList.add('active');
                 document.getElementById('headerTitle').textContent = 'All Orders';
                 document.getElementById('headerSubtitle').textContent = 'Manage and filter your orders';
-                if (!state.filters.dateFrom) setPeriod('7d');
+                if (!state.filters.dateFrom) setPeriod('today');
                 else fetchOrders();
             } else if (view === 'marketing') {
                 document.getElementById('marketingView').classList.add('active');
@@ -2095,6 +2152,17 @@ function getDashboardHTML() {
                 state.filters.dateTo = '';
                 state.pagination.currentPage = 1;
                 fetchOrders();
+            });
+
+            document.getElementById('perPageSelect').addEventListener('change', (e) => {
+                state.pagination.limit = parseInt(e.target.value) || 20;
+                state.pagination.currentPage = 1;
+                fetchOrders();
+            });
+
+            document.getElementById('pageJumpBtn').addEventListener('click', jumpToPage);
+            document.getElementById('pageJumpInput').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') jumpToPage();
             });
 
             document.querySelectorAll('.period-btn').forEach(btn => {
