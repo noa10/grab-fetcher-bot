@@ -21,6 +21,22 @@ class GitHubActionsRunner {
   }
 
   /**
+   * Whether we are inside a trading window (MYT / GMT+8).
+   *
+   * Delegates to GrabOrderFetcher so the scheduler has one definition of the
+   * windows, and so changing OPERATING_HOURS in .env is the only edit needed to
+   * reschedule. Required because the systemd timer fires every 5 minutes
+   * regardless: without this the runner would hit the portal around the clock.
+   */
+  isWithinOperatingHours(date = new Date()) {
+    // The window logic needs no instance state, so call it directly off the class
+    // and skip constructing a fetcher (which would build a bot and browser).
+    const GrabOrderFetcher = require('./index');
+    const now = GrabOrderFetcher.getMytMinutesOfDay(date);
+    return GrabOrderFetcher.getOperatingWindows().some(({ start, end }) => now >= start && now <= end);
+  }
+
+  /**
    * Initialize the order fetcher for one-time run
    */
   async init() {
@@ -388,6 +404,19 @@ async function main() {
   let exitCode = 0;
 
   try {
+    // Respect trading hours before doing anything, including launching a browser.
+    // The systemd timer fires every 5 minutes around the clock, so this is what
+    // keeps the bot off the portal outside 11:00-15:00 and 17:00-22:30 MYT.
+    // Set FORCE_POLL=true to override (useful for a manual one-off run).
+    if (!runner.isWithinOperatingHours() && process.env.FORCE_POLL !== 'true') {
+      const GrabOrderFetcher = require('./index');
+      logger.bot(`Outside trading hours (${GrabOrderFetcher.describeSchedule()} MYT) — skipping poll.`);
+      // Let the logger flush to disk before exiting, otherwise the skip is
+      // invisible in the log and a silent overnight run looks like a crash.
+      setTimeout(() => process.exit(0), 300);
+      return;
+    }
+
     // Initialize the runner
     await runner.init();
 

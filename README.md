@@ -327,26 +327,31 @@ This approach runs the fetcher as a systemd timer that starts the bot on a sched
 
 **3. Create the service unit:**
 
-Replace `/path/to/grab-fetcher-bot` with your actual project directory.
+Replace `/path/to/grab-fetcher-bot` with your actual project directory, and set
+`PUPPETEER_EXECUTABLE_PATH` to your Chrome binary — npm gates Puppeteer's install
+script, so there is usually no browser in `node_modules`.
 
 ```bash
 sudo tee /etc/systemd/system/grab-fetcher.service > /dev/null << 'EOF'
 [Unit]
-Description=Grab Order Fetcher Bot
+Description=Grab Order Fetcher (single poll cycle)
 After=network-online.target
 Wants=network-online.target
 
 [Service]
+# One cycle then exit, so no Chrome process is left running between polls.
 Type=oneshot
 WorkingDirectory=/path/to/grab-fetcher-bot
-# Use xvfb-run on headless servers for Chromium
-ExecStart=/usr/bin/xvfb-run -a --server-args="-screen 0 1280x1024x24" node src/github-actions-runner.js
-# Or without xvfb if you have a display:
-# ExecStart=node src/github-actions-runner.js
-EnvironmentFile=/path/to/grab-fetcher-bot/.env
-TimeoutStartSec=120
+# HEADLESS_MODE=false needs an X display; xvfb-run supplies a throwaway one.
+# Drop the xvfb-run prefix and set HEADLESS_MODE=true to run without one.
+ExecStart=/usr/bin/xvfb-run -a --server-args="-screen 0 1366x768x24" node src/github-actions-runner.js
+Environment=PUPPETEER_EXECUTABLE_PATH=/path/to/chrome
+# A cold login plus a page of order drawers takes 30-90s; allow headroom so a
+# slow network is never SIGKILLed mid-run.
+TimeoutStartSec=420
 StandardOutput=journal
 StandardError=journal
+SyslogIdentifier=grab-fetcher
 
 [Install]
 WantedBy=multi-user.target
@@ -357,25 +362,32 @@ EOF
 ```bash
 sudo tee /etc/systemd/system/grab-fetcher.timer > /dev/null << 'EOF'
 [Unit]
-Description=Run Grab Order Fetcher every 5 minutes during operating hours
+Description=Poll Grab orders every 5 minutes (bot self-gates to trading hours)
 Requires=grab-fetcher.service
 
 [Timer]
-# Two windows, matching OPERATING_HOURS: 11:00-15:00 and 17:00-22:30 MYT.
-# systemd is configured in UTC below; the in-code window check is a second gate.
-OnCalendar=*-*-* 03:05..07:00:00/5
-OnCalendar=*-*-* 09:00..14:35:00/5
-RandomizedDelaySec=30
-Persistent=false
+# Fires every 5 min around the clock; OPERATING_HOURS decides whether a run
+# actually polls. Outside trading hours the runner exits in under a second
+# without launching a browser, so the portal is never touched.
+OnCalendar=*-*-* *:00/5:00
+RandomizedDelaySec=45
+# Run once on resume after downtime rather than replaying every missed slot.
+Persistent=true
+Unit=grab-fetcher.service
 
 [Install]
 WantedBy=timers.target
 EOF
 ```
-> **Note:** `OnCalendar` is in UTC here; subtract 8 hours to get MYT. The ranges
-> above are `03:05–07:00` UTC (11:05–15:00 MYT) and `09:00–14:35` UTC
-> (17:00–22:35 MYT). `npm start` also enforces `OPERATING_HOURS` in code, so the
-> fetcher stays off the portal even if this timer drifts.
+> **Why the timer polls 24/7 instead of only during trading hours:** `OnCalendar`
+> cannot express a partial-hour boundary. Trading hours run 11:05–15:00 and
+> 17:00–22:35 MYT, and every stepping form (`03:05..07:00:00/5`, an explicit
+> hour list) fills the *whole* final hour — firing 8 extra times straight into the
+> 15:00–17:00 break. The `03:05..14:35:00/5` form shown in older copies of this
+> README is not even valid syntax; `systemd-analyze calendar` rejects it.
+> Gating in code is exact, and it means changing `OPERATING_HOURS` in `.env` is
+> the only edit needed to reschedule. Set `FORCE_POLL=true` for a manual run
+> outside trading hours.
 
 **5. Enable and start:**
 ```bash

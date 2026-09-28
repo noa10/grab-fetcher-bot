@@ -9,6 +9,7 @@ const FILES = [
   './timestamp.test.js',
   './order-date.test.js',
   './operating-hours.test.js',
+  './runner-gate.test.js',
   './extractor.test.js',
   './order-model.test.js',
   './state-sync.test.js',
