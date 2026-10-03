@@ -80,10 +80,21 @@ const feedbackSchema = new mongoose.Schema({
     default: ''
   },
 
+  // The Grab review's own creation time (NOT the document's insert time). This is
+  // the field every windowed aggregate sorts and filters on.
+  //
+  // Declared with `timestamps: true` below, which would normally own createdAt —
+  // but Mongoose only sets it when the value is unset, so passing Grab's own
+  // timestamp here is preserved rather than overwritten with scrape time. That
+  // distinction is load-bearing: overwriting it would break every date-range
+  // query in this file.
+  //
+  // No field-level `index: true`: the descending index is declared once via
+  // feedbackSchema.index below. Every query here sorts by -1, so an ascending
+  // index would never be chosen.
   createdAt: {
     type: Date,
-    required: true,
-    index: true
+    required: true
   },
 
   contentLastModifiedAt: { type: Date, default: null },
@@ -137,6 +148,11 @@ const feedbackSchema = new mongoose.Schema({
 
   fetchedAt: { type: Date, default: Date.now, index: true },
   lastUpdated: { type: Date, default: Date.now },
+
+  // SHA-256 over the mutable payload, used to skip no-op writes on re-runs so
+  // `updatedAt` stays a truthful "content last changed" signal. Set by
+  // FeedbackRunner.saveReviews, not by toDocument.
+  contentHash: { type: String, default: '', index: true },
 
   source: {
     type: String,

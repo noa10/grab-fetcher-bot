@@ -1,3 +1,4 @@
+const crypto = require('crypto');
 const logger = require('../utils/logger');
 const { sleep } = require('../utils/helpers');
 
@@ -292,6 +293,54 @@ class FeedbackService {
       return verdict === 0 ? 'mentioned' : null;
     }
     return null;
+  }
+
+  /**
+   * Content hash used to skip unchanged reviews on re-runs.
+   *
+   * Covers only fields Grab can actually change after a review is posted: the
+   * text, the star rating, the images, the merchant reply, and the aspect
+   * verdicts. Deliberately EXCLUDES fetchedAt/lastUpdated, which change on every
+   * scrape and would defeat the whole point.
+   *
+   * Not a security boundary — a collision would skip a genuinely changed review
+   * until its text changed again. SHA-256 over this payload makes that remote.
+   */
+  static contentHash(doc) {
+    // Image URLs are signed CloudFront links (…?Expires=…&Signature=…&Key-Pair-Id=…)
+    // and Grab mints a fresh signature on every API response, so the query string
+    // differs even when the image is untouched. Hashing it caused reviews with
+    // photos (13 of 124) to rewrite themselves on every run — verified live: a
+    // review whose contentLastModifiedAt was months old still reported "1
+    // updated". Only the stable path is hashed, which still detects a genuinely
+    // changed or replaced image.
+    const stableImagePaths = (doc.imageUrls || []).map(u => {
+      const s = String(u);
+      const q = s.indexOf('?');
+      return q === -1 ? s : s.substring(0, q);
+    });
+
+    const payload = JSON.stringify({
+      rating: doc.rating,
+      description: doc.description,
+      status: doc.status,
+      orderID: doc.orderID,
+      customerName: doc.customerName,
+      orderedItems: doc.orderedItems,
+      recommendedItems: doc.recommendedItems,
+      imageUrls: stableImagePaths,
+      merchantReplies: (doc.merchantReplies || []).map(r => ({
+        repliedAt: r.repliedAt instanceof Date ? r.repliedAt.toISOString() : (r.repliedAt || null),
+        replyText: r.replyText
+      })),
+      aspects: (doc.aspects || []).map(a => ({
+        id: a.aspectId, verdict: a.verdict, sentiment: a.sentiment, source: a.source, reason: a.reason
+      })),
+      contentLastModifiedAt: doc.contentLastModifiedAt instanceof Date
+        ? doc.contentLastModifiedAt.toISOString()
+        : (doc.contentLastModifiedAt || null)
+    });
+    return crypto.createHash('sha256').update(payload).digest('hex');
   }
 
   /**

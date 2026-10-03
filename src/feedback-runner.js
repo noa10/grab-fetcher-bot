@@ -26,6 +26,12 @@ class FeedbackRunner {
     this.dryRun = !!options.dryRun;
     this.backfillAll = !!options.all;
     this.days = options.days ? parseInt(options.days, 10) : null;
+    if (this.days !== null && (!Number.isInteger(this.days) || this.days <= 0)) {
+      // Defence in depth: parseArgs already rejects these from the CLI, but the
+      // class is also constructed directly (tests, future callers) so a bad value
+      // must not be able to produce a window that ends before it starts.
+      throw new Error(`FeedbackRunner: days must be a positive integer, got ${options.days}`);
+    }
   }
 
   async init() {
@@ -124,42 +130,57 @@ class FeedbackRunner {
    *
    * $set only the mutable fields rather than replacing the document, so a
    * partial payload can never blank out data written by an earlier scrape.
+   *
+   * Unchanged reviews are skipped via a content hash. Without it every daily run
+   * rewrote all 124 documents — bumping fetchedAt/lastUpdated/updatedAt — so the
+   * daily timer generated pure write churn and made "when did we last actually
+   * see a change?" unanswerable. Grab does mutate reviews (a merchant reply
+   * lands, text is edited), so the hash covers the mutable payload and those
+   * still write through.
    */
   async saveReviews(reviews) {
     if (this.dryRun) {
       logger.feedback(`DRY RUN — would write ${reviews.length} reviews`);
-      return { total: reviews.length, inserted: 0, updated: 0, dryRun: true };
+      return { total: reviews.length, inserted: 0, updated: 0, unchanged: 0, dryRun: true };
     }
 
-    const existingIds = new Set(
-      (await Feedback.find(
-        { reviewID: { $in: reviews.map(r => r.reviewID) } },
-        { reviewID: 1 }
-      ).lean()).map(d => d.reviewID)
-    );
+    const existing = await Feedback.find(
+      { reviewID: { $in: reviews.map(r => r.reviewID) } },
+      { reviewID: 1, contentHash: 1 }
+    ).lean();
+    const existingById = new Map(existing.map(d => [d.reviewID, d]));
 
     let inserted = 0;
     let updated = 0;
+    let unchanged = 0;
 
     for (const review of reviews) {
       const doc = FeedbackService.toDocument(review);
+      const hash = FeedbackService.contentHash(doc);
+      const prior = existingById.get(doc.reviewID);
 
-      if (existingIds.has(doc.reviewID)) {
+      if (prior) {
+        // No change since last scrape: skip the write entirely so updatedAt
+        // remains a truthful "content last changed" signal.
+        if (prior.contentHash && prior.contentHash === hash) {
+          unchanged++;
+          continue;
+        }
         await Feedback.updateOne(
           { reviewID: doc.reviewID },
-          { $set: { ...doc, lastUpdated: new Date() } }
+          { $set: { ...doc, contentHash: hash, lastUpdated: new Date() } }
         );
         updated++;
       } else {
         try {
-          await Feedback.create(doc);
+          await Feedback.create({ ...doc, contentHash: hash });
           inserted++;
         } catch (e) {
           // Duplicate key means a concurrent run won the race — not an error.
           if (e.code === 11000) {
             await Feedback.updateOne(
               { reviewID: doc.reviewID },
-              { $set: { ...doc, lastUpdated: new Date() } }
+              { $set: { ...doc, contentHash: hash, lastUpdated: new Date() } }
             );
             updated++;
           } else {
@@ -172,7 +193,10 @@ class FeedbackRunner {
     if (inserted > 0) {
       logger.database(`Stored ${inserted} new reviews`);
     }
-    return { total: reviews.length, inserted, updated };
+    if (unchanged > 0) {
+      logger.feedback(`Skipped ${unchanged} unchanged review(s) — content hash unchanged`);
+    }
+    return { total: reviews.length, inserted, updated, unchanged };
   }
 
   /** Log the aspects customers complain about — the actionable part. */
@@ -213,13 +237,59 @@ class FeedbackRunner {
   }
 }
 
+/**
+ * Parse CLI flags, rejecting anything malformed.
+ *
+ * These are validated here rather than in the constructor because a bad flag must
+ * fail loudly and exit non-zero. Previously `--days -5` produced a window whose
+ * start is AFTER its end, so the run silently fetched nothing and still reported
+ * success, and `--days abc` quietly fell back to 90. A cron job hitting either
+ * would look healthy while collecting no reviews at all.
+ *
+ * @returns {{dryRun: boolean, all: boolean, days: number|null}}
+ * @throws {Error} with a usage message on bad input.
+ */
+function parseArgs(args) {
+  const options = { dryRun: args.includes('--dry-run'), all: args.includes('--all'), days: null };
+
+  const daysIdx = args.indexOf('--days');
+  if (daysIdx === -1) return options;
+
+  if (options.all) {
+    throw new Error('--days and --all are mutually exclusive: --all already fetches everything.');
+  }
+
+  const raw = args[daysIdx + 1];
+  // A missing value, or the next flag being taken as the value, is the common
+  // typo (`--days --dry-run`) and must not be read as NaN -> 90.
+  if (raw === undefined || raw.startsWith('--')) {
+    throw new Error('--days requires a positive integer, e.g. --days 30.');
+  }
+
+  const days = Number(raw);
+  if (!Number.isInteger(days) || days <= 0) {
+    throw new Error(`--days must be a positive integer, got "${raw}".`);
+  }
+  // Cap so a typo cannot ask the portal for a century of pagination.
+  if (days > 3650) {
+    throw new Error(`--days ${days} exceeds the 3650-day maximum. Use --all for full history.`);
+  }
+
+  options.days = days;
+  return options;
+}
+
 async function main() {
-  const args = process.argv.slice(2);
-  const options = {
-    dryRun: args.includes('--dry-run'),
-    all: args.includes('--all'),
-    days: args.includes('--days') ? args[args.indexOf('--days') + 1] : null
-  };
+  let options;
+  try {
+    options = parseArgs(process.argv.slice(2));
+  } catch (error) {
+    // Before init(): the logger may not be ready and no browser should launch for
+    // a command that cannot succeed.
+    console.error(`Argument error: ${error.message}`);
+    console.error('Usage: node src/feedback-runner.js [--days N | --all] [--dry-run]');
+    process.exit(2);
+  }
 
   const runner = new FeedbackRunner(options);
   let exitCode = 0;
@@ -252,3 +322,6 @@ if (require.main === module) {
 }
 
 module.exports = FeedbackRunner;
+// parseArgs is exported for the CLI-validation tests; it is not part of the
+// runner's own API.
+module.exports.parseArgs = parseArgs;

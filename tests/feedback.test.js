@@ -1,12 +1,13 @@
 const FeedbackService = require('../src/services/feedbackService');
 const Feedback = require('../src/models/Feedback');
+const FeedbackRunner = require('../src/feedback-runner');
 
 /**
  * Real review payloads captured from the live portal on 2026-10-03. Kept
  * verbatim (rather than invented fixtures) because the two traps these tests
  * guard against are both shape facts about live data:
  *   - reviewReplies is [null] when unanswered, not []
- *   - reviewAspects[].rating is a 1-indexed verdict where 1 = GOOD
+ *   - reviewAspects[].rating is 1 / -1 / 0 depending on `source`, NOT a 1-5 scale
  */
 
 const FIVE_STAR_WITH_ASPECTS = {
@@ -278,7 +279,6 @@ module.exports = {
     {
       name: 'defaults the window to 90 days and honours --all',
       fn: () => {
-        const FeedbackRunner = require('../src/feedback-runner');
         const normal = new FeedbackRunner({ days: 30 }).getWindow();
         assert(normal.days === 30, 'honours explicit days');
 
@@ -291,9 +291,128 @@ module.exports = {
       }
     },
     {
+      name: 'rejects a malformed --days instead of silently defaulting',
+      fn: () => {
+        // Each of these previously produced a 90-day run or a window ending
+        // before it starts, while still reporting success.
+        const bad = [['--days'], ['--days', '--dry-run'], ['--days', 'abc'], ['--days', '0'], ['--days', '-5'], ['--days', '1.5']];
+        for (const args of bad) {
+          let threw = false;
+          try {
+            FeedbackRunner.parseArgs(args);
+          } catch (e) {
+            threw = true;
+          }
+          assert(threw, `parseArgs([${args.join(' ')}]) should throw`);
+        }
+      }
+    },
+    {
+      name: 'accepts valid flags and rejects --days with --all',
+      fn: () => {
+        assert(FeedbackRunner.parseArgs(['--days', '30']).days === 30, 'parses a valid day count');
+        assert(FeedbackRunner.parseArgs(['--days', '7', '--dry-run']).dryRun === true, 'parses --dry-run');
+        assert(FeedbackRunner.parseArgs([]).days === null, 'no flag means the default window');
+        assert(FeedbackRunner.parseArgs(['--all']).all === true, 'parses --all');
+
+        let threw = false;
+        try {
+          FeedbackRunner.parseArgs(['--days', '30', '--all']);
+        } catch (e) { threw = true; }
+        assert(threw, '--days and --all are contradictory and must be rejected');
+      }
+    },
+    {
+      name: 'a bad days value cannot produce a backwards window',
+      fn: () => {
+        // Defence in depth for direct construction, bypassing parseArgs.
+        let threw = false;
+        try { new FeedbackRunner({ days: -5 }); } catch (e) { threw = true; }
+        assert(threw, 'constructor must reject a negative day count');
+      }
+    },
+    {
+      name: 'content hash ignores scrape-time fields',
+      fn: () => {
+        // The whole point: a re-run must not look like a change just because it
+        // scraped again.
+        const a = FeedbackService.toDocument(FIVE_STAR_WITH_ASPECTS);
+        const b = FeedbackService.toDocument(FIVE_STAR_WITH_ASPECTS);
+        b.fetchedAt = new Date(Date.now() + 60000);
+        b.lastUpdated = new Date(Date.now() + 60000);
+        assert(FeedbackService.contentHash(a) === FeedbackService.contentHash(b),
+          'fetchedAt/lastUpdated must not affect the hash');
+      }
+    },
+    {
+      name: 'content hash changes when the review actually changes',
+      fn: () => {
+        const base = FeedbackService.toDocument(FIVE_STAR_WITH_ASPECTS);
+        const edited = FeedbackService.toDocument({ ...FIVE_STAR_WITH_ASPECTS, description: 'edited text' });
+        assert(FeedbackService.contentHash(base) !== FeedbackService.contentHash(edited),
+          'edited text must change the hash');
+
+        // A merchant reply landing is the most common real mutation.
+        const replied = FeedbackService.toDocument({
+          ...FIVE_STAR_WITH_ASPECTS,
+          reviewReplies: [{ repliedAt: '2026-10-04T09:00:00Z', replyText: 'Thank you!' }]
+        });
+        assert(FeedbackService.contentHash(base) !== FeedbackService.contentHash(replied),
+          'a new merchant reply must change the hash');
+      }
+    },
+    {
+      name: 'content hash is stable across key ordering',
+      fn: () => {
+        const a = FeedbackService.toDocument(FIVE_STAR_WITH_ASPECTS);
+        const b = FeedbackService.toDocument(FIVE_STAR_WITH_ASPECTS);
+        // Simulate BSON field reordering on a round-trip.
+        const reordered = JSON.parse(JSON.stringify(b));
+        const flipped = Object.fromEntries(Object.entries(reordered).reverse());
+        assert(FeedbackService.contentHash(a) === FeedbackService.contentHash(flipped),
+          'hash must not depend on object key order');
+      }
+    },
+    {
+      name: 'content hash ignores re-signed image URLs',
+      fn: () => {
+        // Grab mints a fresh CloudFront signature per API response, so a review
+        // with a photo otherwise rewrites itself on every single run. Live-verified
+        // bug: a review whose contentLastModifiedAt was months old still reported
+        // "1 updated" purely because its signature rotated.
+        const signed = 'https://d24t71ciweynx9.cloudfront.net/food-reviews/images/0/zUTMxQTM4UDO5QzNyQDO5QjM.jpg'
+          + '?Expires=3051353084&Signature=H39W5tIO3mms~X~z9Fe3x9l9OQ9NmwcHx6qnSruvt0wB3hzGPUKThvfDqOr35kBBDUNB7hvOfKHifBPMKgqwTv2mj8s6h9t3izFpi8nJcyWiT2oe20yndZyHJkIKyiEh9DxD6ZHFqzOkvHYWRVlu0f-v7RBPUWgfO5i9mbGCUwxyYS3~6EQkogaMprf-YjyA~vBqY4JSa~EGdGPunUhM7K5O0cTn69QT6g0oTo~yFJVvPvYvr4oqFknd9AnwpWY2zKCmdyAT5duLxG7SVt9FtaaD36ZdjNswESM09WZKttVIibySOUH7fyHcblncN2u1OKngkangl3Gl--GXrPgIcA__&Key-Pair-Id=K3UYLQ5OPJHQLI';
+
+        const a = FeedbackService.toDocument({
+          ...FIVE_STAR_WITH_ASPECTS, paxReviewImageUrls: [signed]
+        });
+        const b = FeedbackService.toDocument({
+          ...FIVE_STAR_WITH_ASPECTS,
+          paxReviewImageUrls: [signed.replace(/Expires=\d+/, 'Expires=3999999999')
+            .replace(/Signature=[^&]+/, 'Signature=DIFFERENT_SIGNATURE')]
+        });
+
+        assert(a.imageUrls[0] !== b.imageUrls[0], 'fixture must actually differ in the signature');
+        assert(FeedbackService.contentHash(a) === FeedbackService.contentHash(b),
+          'a rotated image signature must not look like a content change');
+      }
+    },
+    {
+      name: 'content hash still detects a genuinely different image',
+      fn: () => {
+        const base = 'https://cdn.example.com/food-reviews/images/0/aaa.jpg?Expires=1&Signature=x';
+        const a = FeedbackService.toDocument({ ...FIVE_STAR_WITH_ASPECTS, paxReviewImageUrls: [base] });
+        const b = FeedbackService.toDocument({
+          ...FIVE_STAR_WITH_ASPECTS,
+          paxReviewImageUrls: [base.replace('/aaa.jpg', '/bbb.jpg')]
+        });
+        assert(FeedbackService.contentHash(a) !== FeedbackService.contentHash(b),
+          'a replaced image must still be detected via its stable path');
+      }
+    },
+    {
       name: 'dry-run writes nothing',
       fn: () => {
-        const FeedbackRunner = require('../src/feedback-runner');
         const runner = new FeedbackRunner({ dryRun: true });
         return runner.saveReviews([FIVE_STAR_WITH_ASPECTS]).then(r => {
           assert(r.dryRun === true, 'flagged as dry run');
