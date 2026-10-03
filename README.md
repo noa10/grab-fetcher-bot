@@ -141,12 +141,14 @@ text. The model derives a `sentiment` of `positive` / `negative` / `mentioned`
 so the three are never averaged together — counting a neutral mention as a
 complaint would rank an aspect "worst" purely because customers talk about it.
 
-The store id is hardcoded (`1-C36JLBD2PFD3LA`, Mad Krapow - Subang Permai) in
-`src/services/feedbackService.js` — there is only one store. When a second one
-is added, that must become a list and the ids have to be read off the portal;
-they cannot be derived from `localStorage.merchantSelector`, which holds the
-*master account* id (`MYMG20230315032033018448`, Bakaris Enterprise) that the
-feedback API rejects.
+The store id defaults to `1-C36JLBD2PFD3LA` (Mad Krapow - Subang Permai) and can be
+overridden with the **`GRAB_STORE_ID`** env var — see `.env.example`. The default
+only covers the one store this bot was written for; when a second store is added
+the ids have to be read off the portal, because they **cannot** be derived from
+`localStorage.merchantSelector`, which holds the *master account* id
+(`MYMG20230315032033018448`, Bakaris Enterprise) that the feedback API rejects. To
+find a store's id, open the Feedback tab and read the `merchantid` header its own
+request sends.
 
 A review's `orderID` is the same identifier as `Order.longOrderId`, so reviews
 can be joined to orders. Coverage is partial by design: reviews go back to 2023

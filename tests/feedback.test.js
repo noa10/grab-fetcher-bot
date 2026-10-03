@@ -411,6 +411,61 @@ module.exports = {
       }
     },
     {
+      name: 'content hash catches a review flipping out of the "new" state',
+      fn: () => {
+        // Grab clears isNew after a while. Without it in the hash, a review first
+        // seen while new would keep isNewToMerchant: true in Mongo until some
+        // unrelated field changed.
+        const fresh = FeedbackService.toDocument({ ...FIVE_STAR_WITH_ASPECTS, isNew: true });
+        const seen = FeedbackService.toDocument({ ...FIVE_STAR_WITH_ASPECTS, isNew: false });
+        assert(fresh.isNewToMerchant === true, 'isNew mapped from Grab');
+        assert(FeedbackService.contentHash(fresh) !== FeedbackService.contentHash(seen),
+          'the isNew flip must be persisted');
+      }
+    },
+    {
+      name: 'one malformed review does not abort the batch',
+      fn: () => {
+        // A rating outside 1-5 fails Mongoose validation. Without the per-review
+        // try/catch that threw out of the loop and left every later review
+        // unwritten.
+        const FeedbackRunner = require('../src/feedback-runner');
+        const runner = new FeedbackRunner({ dryRun: false });
+        // Stub the model so no database is needed: reject the bad review, accept
+        // the rest, exactly as Mongoose would.
+        const FeedbackModel = require('../src/models/Feedback');
+        const origFind = FeedbackModel.find;
+        const origCreate = FeedbackModel.create;
+        const origUpdate = FeedbackModel.updateOne;
+        FeedbackModel.find = () => ({ lean: () => Promise.resolve([]) });
+        FeedbackModel.create = (doc) => {
+          if (doc.rating < 1 || doc.rating > 5) {
+            const e = new Error('Validation failed: rating must be 1-5');
+            e.name = 'ValidationError';
+            return Promise.reject(e);
+          }
+          return Promise.resolve(doc);
+        };
+        FeedbackModel.updateOne = () => Promise.resolve({});
+
+        const payload = (id, rating) => ({ ...FIVE_STAR_WITH_ASPECTS, reviewID: id, rating });
+
+        return runner.saveReviews([
+          payload('good-1', 5),
+          payload('bad-2', 99),      // must be skipped, not fatal
+          payload('good-3', 4),
+        ]).then(r => {
+          assert(r.inserted === 2, `expected 2 inserted despite the bad row, got ${r.inserted}`);
+          assert(r.failed === 1, `expected 1 failed, got ${r.failed}`);
+          assert(r.total === 3, 'all three attempted');
+        }).finally(() => {
+          FeedbackModel.find = origFind;
+          FeedbackModel.create = origCreate;
+          FeedbackModel.updateOne = origUpdate;
+        });
+      }
+    },
+    {
       name: 'dry-run writes nothing',
       fn: () => {
         const runner = new FeedbackRunner({ dryRun: true });

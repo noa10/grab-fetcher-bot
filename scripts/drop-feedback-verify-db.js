@@ -51,9 +51,17 @@ const TARGET_DB = 'grab_feedback_verify';
     throw new Error(`Drop incomplete — still present: ${after.map(c => c.name).join(', ')}`);
   }
 
-  const dbs = await db.admin().listDatabases();
-  console.log('Databases on this cluster now:');
-  dbs.databases.forEach(d => console.log(`  ${d.name} (${d.sizeOnDisk} bytes)`));
+  // Informational only. listDatabases() needs cluster-admin privileges, so on a
+  // least-privilege Atlas user it throws. That must NOT fail the script: the
+  // drop has already succeeded and been verified above, and exiting 1 here would
+  // report a successful drop as a failure.
+  try {
+    const dbs = await db.admin().listDatabases();
+    console.log('Databases on this cluster now:');
+    dbs.databases.forEach(d => console.log(`  ${d.name} (${d.sizeOnDisk} bytes)`));
+  } catch (e) {
+    console.log(`(skipped cluster listing — insufficient privileges: ${e.message})`);
+  }
 
   await mongoose.disconnect();
 })().catch(e => { console.error('ERROR:', e.message); process.exit(1); });

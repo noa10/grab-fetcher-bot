@@ -3,8 +3,26 @@ const mongoose = require('mongoose');
 /**
  * A Grab customer review ("pax review") from the Feedback > Ratings and reviews tab.
  *
- * Sourced from POST /food/merchant/v1/feedback/reviews rather than the DOM. See
- * the grab-fetcher-bot-runbook skill for the endpoint contract.
+ * Sourced from the portal's own JSON API, not the DOM:
+ *
+ *   POST https://api.grab.com/food/merchant/v1/feedback/reviews
+ *     body: { serviceType, startDate, endDate, merchantIDs[], businessTypeFilter,
+ *             include_empty_reviews, nextToken? }
+ *     resp: { reviews: [...], nextToken }   20 per page, follow nextToken to the end
+ *
+ *   GET  https://api.grab.com/food/merchant/v1/feedback/overview?...  (no CSRF needed)
+ *
+ * The POST REQUIRES an `x-csrf-token` header plus `merchantid`,
+ * `requestsource: troyPortal` and `referer`. That token appears in NO cookie
+ * (including httpOnly) and in NO localStorage key — it exists only in the header
+ * of the portal SPA's own XHR, so it is captured off
+ * `page.on('request')` after visiting /feedback. Without it the API returns 403
+ * with a {target, reason, message} body, which reads exactly like a credentials
+ * failure. See FeedbackService.captureCsrfToken.
+ *
+ * Unlike the orders History tab (30-day retention floor), this endpoint honours
+ * `startDate` arbitrarily far back: paginating from 2019 returned 124 reviews
+ * spanning 2023-05-16 → 2026-10-03.
  *
  * KEY GOTCHA — `reviewAspects[].verdict` is NOT a rating and has NO numeric
  * scale. Measured across 124 stored reviews (2026-10-03), only three values
@@ -18,8 +36,12 @@ const mongoose = require('mongoose');
  *
  * So `verdict` is tri-state within its source and carries no ordering between
  * sources. Anything that tries to average it — or map it onto the 1-5 star
- * scale — is wrong. The usable signals are the derived `sentiment` field and
- * the `mentions` count, both set in FeedbackService.toDocument.
+ * scale — is wrong. The usable signal is the derived `sentiment` field, set in
+ * FeedbackService.toDocument.
+ *
+ * A review's `orderID` is the SAME identifier as `Order.longOrderId` (11 digits,
+ * dash, 14 uppercase alphanumerics), NOT the GF-xxxx number in
+ * `Order.orderNumber`.
  */
 
 const aspectSchema = new mongoose.Schema({
@@ -152,7 +174,12 @@ const feedbackSchema = new mongoose.Schema({
   // SHA-256 over the mutable payload, used to skip no-op writes on re-runs so
   // `updatedAt` stays a truthful "content last changed" signal. Set by
   // FeedbackRunner.saveReviews, not by toDocument.
-  contentHash: { type: String, default: '', index: true },
+  //
+  // Deliberately NOT indexed: nothing queries on it. Lookups go through the
+  // reviewID index, and this field is only ever read as part of that lookup's
+  // projection. An index here would cost a write on every insert and update for
+  // no read benefit.
+  contentHash: { type: String, default: '' },
 
   source: {
     type: String,

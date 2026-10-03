@@ -11,7 +11,15 @@ const { sleep } = require('../utils/helpers');
  * browser has already sliced out of a single response. Calling the API gets the
  * whole set in one round of nextToken pagination.
  *
- * See the grab-fetcher-bot-runbook skill for the verified endpoint contract.
+ * Endpoints (base https://api.grab.com/food/merchant/v1/feedback):
+ *   POST /reviews    {serviceType, startDate, endDate, merchantIDs[],
+ *                     businessTypeFilter, include_empty_reviews, nextToken?}
+ *                    -> {reviews: [...], nextToken}, 20 per page
+ *   GET  /overview?...serviceType&startDate&endDate&merchantIDs[]&... (no CSRF)
+ *
+ * `startDate` is honoured arbitrarily far back — unlike the orders History tab,
+ * which has a 30-day retention floor. Verified: paginating from 2019 returned
+ * 124 reviews back to 2023-05-16 before the token stopped.
  *
  * AUTH MODEL — the important subtlety:
  *   - GET  feedback/overview needs no CSRF token; a credentialed fetch works.
@@ -41,6 +49,16 @@ const FEEDBACK_PAGE_URL = 'https://merchant.grab.com/feedback';
 const DEFAULT_MERCHANT_ID = '1-C36JLBD2PFD3LA';
 const DEFAULT_MERCHANT_NAME = 'Mad Krapow - Subang Permai';
 
+/**
+ * Single source of truth for the service type.
+ *
+ * Only DELIVERY is supported: the portal's Feedback tab exposes delivery reviews
+ * only, and both endpoints were verified against it. Referenced by the instance
+ * option, by the overview query and by the static toDocument, so the value
+ * cannot drift between them.
+ */
+const DEFAULT_SERVICE_TYPE = 'DELIVERY';
+
 // Grab returns 20 per page and hands back a nextToken until exhausted.
 const PAGE_SIZE_HINT = 20;
 // Safety stop so a nextToken that never terminates cannot hang the runner.
@@ -56,7 +74,7 @@ class FeedbackService {
     this.page = page;
     this.merchantId = options.merchantId || process.env.GRAB_STORE_ID || DEFAULT_MERCHANT_ID;
     this.merchantName = options.merchantName || DEFAULT_MERCHANT_NAME;
-    this.serviceType = options.serviceType || 'DELIVERY';
+    this.serviceType = options.serviceType || DEFAULT_SERVICE_TYPE;
     this.csrfToken = null;
   }
 
@@ -233,9 +251,9 @@ class FeedbackService {
     const startDate = options.startDate || new Date(endDate.getTime() - 90 * 24 * 60 * 60 * 1000);
 
     const result = await this.page.evaluate(async (args) => {
-      const { url, startDate, endDate, merchantId } = args;
+      const { url, startDate, endDate, merchantId, serviceType } = args;
       const qs = new URLSearchParams({
-        serviceType: 'DELIVERY',
+        serviceType,
         startDate,
         endDate,
         'merchantIDs[]': merchantId,
@@ -251,7 +269,8 @@ class FeedbackService {
       url: `${FEEDBACK_API_BASE}/overview`,
       startDate: startDate.toISOString(),
       endDate: endDate.toISOString(),
-      merchantId: this.merchantId
+      merchantId: this.merchantId,
+      serviceType: this.serviceType
     });
 
     if (result.status !== 200 || !result.json?.feedbackOverview) {
@@ -326,6 +345,12 @@ class FeedbackService {
       status: doc.status,
       orderID: doc.orderID,
       customerName: doc.customerName,
+      // Grab flips these after posting (a review first seen while new stops
+      // being new). They are in the hash so that flip is actually persisted —
+      // otherwise a review seen for the first time as new would keep
+      // isNewToMerchant: true in Mongo until some unrelated field changed.
+      isNewToMerchant: doc.isNewToMerchant,
+      isReportedBefore: doc.isReportedBefore,
       orderedItems: doc.orderedItems,
       recommendedItems: doc.recommendedItems,
       imageUrls: stableImagePaths,
@@ -382,7 +407,7 @@ class FeedbackService {
       customerName: review.eaterName || '',
       merchantName: review.merchantName || '',
       merchantID: review.merchantID || '',
-      serviceType: review.serviceType || this.serviceType || 'DELIVERY',
+      serviceType: review.serviceType || DEFAULT_SERVICE_TYPE,
       status: review.status || 'PUBLIC',
       orderedItems: review.orderedItems || [],
       recommendedItems: review.recommendedItems || [],

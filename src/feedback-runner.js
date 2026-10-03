@@ -153,40 +153,53 @@ class FeedbackRunner {
     let inserted = 0;
     let updated = 0;
     let unchanged = 0;
+    let failed = 0;
 
     for (const review of reviews) {
-      const doc = FeedbackService.toDocument(review);
-      const hash = FeedbackService.contentHash(doc);
-      const prior = existingById.get(doc.reviewID);
+      // Per-review try/catch: one malformed payload (a rating outside 1-5, an
+      // unparseable createdAt) must not abort the batch and leave the remaining
+      // reviews unwritten. A partial save is worse than a logged skip — the run
+      // reports what it skipped instead of failing opaquely.
+      try {
+        const doc = FeedbackService.toDocument(review);
+        const hash = FeedbackService.contentHash(doc);
+        const prior = existingById.get(doc.reviewID);
 
-      if (prior) {
-        // No change since last scrape: skip the write entirely so updatedAt
-        // remains a truthful "content last changed" signal.
-        if (prior.contentHash && prior.contentHash === hash) {
-          unchanged++;
-          continue;
-        }
-        await Feedback.updateOne(
-          { reviewID: doc.reviewID },
-          { $set: { ...doc, contentHash: hash, lastUpdated: new Date() } }
-        );
-        updated++;
-      } else {
-        try {
-          await Feedback.create({ ...doc, contentHash: hash });
-          inserted++;
-        } catch (e) {
-          // Duplicate key means a concurrent run won the race — not an error.
-          if (e.code === 11000) {
-            await Feedback.updateOne(
-              { reviewID: doc.reviewID },
-              { $set: { ...doc, contentHash: hash, lastUpdated: new Date() } }
-            );
-            updated++;
-          } else {
-            throw e;
+        if (prior) {
+          // No change since last scrape: skip the write entirely so updatedAt
+          // remains a truthful "content last changed" signal.
+          if (prior.contentHash && prior.contentHash === hash) {
+            unchanged++;
+            continue;
+          }
+          await Feedback.updateOne(
+            { reviewID: doc.reviewID },
+            { $set: { ...doc, contentHash: hash, lastUpdated: new Date() } }
+          );
+          updated++;
+        } else {
+          try {
+            await Feedback.create({ ...doc, contentHash: hash });
+            inserted++;
+          } catch (e) {
+            // Duplicate key means a concurrent run won the race — not an error.
+            if (e.code === 11000) {
+              await Feedback.updateOne(
+                { reviewID: doc.reviewID },
+                { $set: { ...doc, contentHash: hash, lastUpdated: new Date() } }
+              );
+              updated++;
+            } else {
+              throw e;
+            }
           }
         }
+      } catch (e) {
+        failed++;
+        // Log the id, never the review text.
+        logger.error(
+          `Failed to store review ${review.reviewID || '<no id>'}: ${e.message}`
+        );
       }
     }
 
@@ -196,7 +209,10 @@ class FeedbackRunner {
     if (unchanged > 0) {
       logger.feedback(`Skipped ${unchanged} unchanged review(s) — content hash unchanged`);
     }
-    return { total: reviews.length, inserted, updated, unchanged };
+    if (failed > 0) {
+      logger.feedback(`WARNING: ${failed} review(s) could not be stored and were skipped`);
+    }
+    return { total: reviews.length, inserted, updated, unchanged, failed };
   }
 
   /** Log the aspects customers complain about — the actionable part. */
