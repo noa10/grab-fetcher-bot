@@ -152,6 +152,15 @@ A review's `orderID` is the same identifier as `Order.longOrderId`, so reviews
 can be joined to orders. Coverage is partial by design: reviews go back to 2023
 while the orders collection holds only recent history.
 
+**Scheduling.** The daily job runs at **19:30 UTC = 03:30 MYT**, deliberately in
+the quiet window after the order bot's trading hours (11:05–15:00 and
+17:00–22:30 MYT) so the two never compete for the portal. Reviews trickle in
+rather than spiking, so a daily poll loses nothing.
+
+> **One-time backfill:** the default 90-day window only returns 13 reviews, so a
+> fresh install captures just recent history. Run `--all` once to pull the full
+> archive — 124 reviews back to 2023-05-16 as of 2026-10-03.
+
 ### 4. Access Dashboard
 
 Open http://localhost:3000/login to sign in, then access the dashboard at http://localhost:3000/dashboard.

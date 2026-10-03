@@ -1,0 +1,17 @@
+[Unit]
+Description=Fetch Grab customer reviews once a day
+Documentation=https://github.com/noa10/grab-fetcher-bot
+
+[Timer]
+# Once daily, in the quiet window. This host's timezone is UTC, so 19:30 UTC is
+# 03:30 MYT — after the order bot's trading hours (11:05-15:00 and 17:00-22:30
+# MYT) have ended, so the two jobs never compete for the portal.
+OnCalendar=*-*-* 19:30:00
+# Spread the load off an exact boundary.
+RandomizedDelaySec=300
+# If the box was down at that hour, run once on resume rather than replaying.
+Persistent=true
+Unit=grab-feedback.service
+
+[Install]
+WantedBy=timers.target
