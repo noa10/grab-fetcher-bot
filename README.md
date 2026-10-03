@@ -109,7 +109,48 @@ npm start
 
 # Or start the API server (in another terminal)
 npm run server
+
+# Fetch customer reviews / feedback (separate from the order poller)
+npm run fetch-feedback              # last 90 days (default)
+npm run fetch-feedback -- --days 30 # narrower window
+npm run fetch-feedback -- --all     # full history backfill (verified back to 2023-05)
+npm run fetch-feedback -- --dry-run # fetch and report, write nothing
 ```
+
+#### Customer feedback
+
+Reviews come from the portal's **Feedback** tab. Rather than scraping the DOM,
+the bot calls the same JSON API the portal SPA itself uses
+(`api.grab.com/food/merchant/v1/feedback/reviews`), so a layout change cannot
+break it. It reuses the existing puppeteer login for authentication.
+
+Two things worth knowing:
+
+- **Reviews have no retention limit.** The orders History tab only exposes 30
+  days, but the feedback endpoint honours `startDate` arbitrarily far back.
+  `--all` currently returns 124 reviews spanning 2023-05-16 → today.
+- **The CSRF token lives nowhere.** Not in any cookie, not in localStorage —
+  only in the header of the SPA's own XHR. The bot visits `/feedback`, captures
+  it, then replays. Without it the API returns a 403 that looks like a
+  credentials failure; `feedbackService` throws a distinct error for that case.
+
+Aspect ratings are **not** a 1-5 scale. Grab sends `reviewAspects[].rating` as
+`1` (customer ticked it good) or `-1` (bad) when the customer filled in the
+structured form, and `0` when its NLP merely *mentioned* the topic in the free
+text. The model derives a `sentiment` of `positive` / `negative` / `mentioned`
+so the three are never averaged together — counting a neutral mention as a
+complaint would rank an aspect "worst" purely because customers talk about it.
+
+The store id is hardcoded (`1-C36JLBD2PFD3LA`, Mad Krapow - Subang Permai) in
+`src/services/feedbackService.js` — there is only one store. When a second one
+is added, that must become a list and the ids have to be read off the portal;
+they cannot be derived from `localStorage.merchantSelector`, which holds the
+*master account* id (`MYMG20230315032033018448`, Bakaris Enterprise) that the
+feedback API rejects.
+
+A review's `orderID` is the same identifier as `Order.longOrderId`, so reviews
+can be joined to orders. Coverage is partial by design: reviews go back to 2023
+while the orders collection holds only recent history.
 
 ### 4. Access Dashboard
 
