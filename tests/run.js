@@ -13,6 +13,7 @@ const FILES = [
   './extractor.test.js',
   './order-model.test.js',
   './state-sync.test.js',
+  './feedback.test.js',
   './api-session.test.js',
 ];
 

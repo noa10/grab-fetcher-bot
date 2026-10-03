@@ -1,0 +1,48 @@
+# Grab customer feedback fetcher — daily systemd units.
+#
+# Mirrors grab-fetcher.service/.timer: one fetch then exit, so no Chrome process
+# is left running between runs. Install with:
+#
+#   sudo cp deploy/grab-feedback.service deploy/grab-feedback.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now grab-feedback.timer
+#
+# Replace the WorkingDirectory, the node wrapper and PUPPETEER_EXECUTABLE_PATH
+# for your host. See the Deployment section of the README for the order-bot units
+# these are modelled on.
+[Unit]
+Description=Grab Feedback Fetcher (customer reviews, once daily)
+Documentation=https://github.com/noa10/grab-fetcher-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/grab-fetcher-bot
+
+# HEADLESS_MODE=false in .env needs an X display; xvfb-run supplies a throwaway
+# one. Drop the prefix and set HEADLESS_MODE=true to run without one.
+ExecStart=/usr/bin/xvfb-run -a --server-args="-screen 0 1366x768x24" /home/ubuntu/.local/bin/grab-fetcher-node src/feedback-runner.js
+
+# Puppeteer's postinstall is gated by npm, so there is usually no browser in
+# node_modules.
+Environment=PUPPETEER_EXECUTABLE_PATH=/home/ubuntu/.local/share/chrome-arm64/chrome-linux-arm64/chrome
+
+# A cold login, the CSRF capture and paginating every review take 60-120s.
+TimeoutStartSec=600
+TimeoutStopSec=30
+KillMode=mixed
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=grab-feedback
+
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ReadWritePaths=/home/ubuntu/grab-fetcher-bot
+
+[Install]
+WantedBy=multi-user.target

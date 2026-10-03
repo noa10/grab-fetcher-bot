@@ -93,6 +93,10 @@ logger.screenshot = (message, meta = {}) => {
   logger.info(`[SCREENSHOT] ${message}`, meta);
 };
 
+logger.feedback = (message, meta = {}) => {
+  logger.info(`[FEEDBACK] ${message}`, meta);
+};
+
 logger.export = (message, meta = {}) => {
   logger.info(`[EXPORT] ${message}`, meta);
 };
