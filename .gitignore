@@ -71,3 +71,8 @@ temp/
 # Oh My Openagent
 .omo/
 .sisyphus/
+
+# Persistent browser profile (device identity + session cookies)
+.browser-profile/
+session-cookies.json
+node_modules

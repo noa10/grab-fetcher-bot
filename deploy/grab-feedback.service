@@ -30,6 +30,11 @@ ExecStart=/usr/bin/xvfb-run -a --server-args="-screen 0 1366x768x24" /home/ubunt
 # node_modules.
 Environment=PUPPETEER_EXECUTABLE_PATH=/home/ubuntu/.local/share/chrome-arm64/chrome-linux-arm64/chrome
 
+# Its own browser profile: Chromium locks a profile directory, so the feedback
+# run must not share one with the 5-minute order poll. A stable profile means the
+# portal session is reused and Grab stops emailing a device-login alert per run.
+Environment=BROWSER_PROFILE_DIR=/home/ubuntu/repos/grab-fetcher-bot/.browser-profile-feedback
+
 # A cold login, the CSRF capture and paginating every review take 60-120s.
 TimeoutStartSec=600
 TimeoutStopSec=30
