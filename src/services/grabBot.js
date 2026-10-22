@@ -1,5 +1,6 @@
 const puppeteer = require('puppeteer');
 const fs = require('fs-extra');
+const path = require('path');
 const logger = require('../utils/logger');
 const {
   sleep,
@@ -7,6 +8,40 @@ const {
   getRandomUserAgent,
   retryWithBackoff
 } = require('../utils/helpers');
+
+// A persistent Chromium profile is what makes the portal session survive between
+// runs. Without it every poll is a brand-new browser: Grab sees a new device and
+// emails a "New Device Login" alert each time (measured: 109 in one day at a
+// 5-minute poll). The profile also stores the device identity cookie, so the
+// alerts stop even when the session itself has expired.
+const PROFILE_DIR = process.env.BROWSER_PROFILE_DIR ||
+  path.join(process.cwd(), '.browser-profile');
+const COOKIE_FILE = path.join(PROFILE_DIR, 'session-cookies.json');
+
+/**
+ * Keep one user agent for the life of the profile.
+ *
+ * A rotating UA is worse than useless here: it changes the browser fingerprint on
+ * every run, which invalidates the device identity Grab stored in the profile and
+ * re-triggers the device-login alert even with valid cookies.
+ */
+function stableUserAgent() {
+  const uaFile = path.join(PROFILE_DIR, 'user-agent.txt');
+  try {
+    const saved = fs.readFileSync(uaFile, 'utf8').trim();
+    if (saved) return saved;
+  } catch (e) {
+    // First run, or the profile was cleared.
+  }
+  const ua = getRandomUserAgent();
+  try {
+    fs.ensureDirSync(PROFILE_DIR);
+    fs.writeFileSync(uaFile, ua);
+  } catch (e) {
+    logger.puppeteer(`Could not persist user agent: ${e.message}`);
+  }
+  return ua;
+}
 
 class GrabBot {
   constructor() {
@@ -23,6 +58,7 @@ class GrabBot {
 
       const browserOptions = {
         headless: process.env.HEADLESS_MODE === 'true',
+        userDataDir: PROFILE_DIR,
         args: [
           '--no-sandbox',
           '--disable-setuid-sandbox',
@@ -52,7 +88,7 @@ class GrabBot {
       this.page = await this.browser.newPage();
 
       if (process.env.USER_AGENT_ROTATION === 'true') {
-        const userAgent = getRandomUserAgent();
+        const userAgent = stableUserAgent();
         await this.page.setUserAgent(userAgent);
         logger.puppeteer(`Set user agent: ${userAgent}`);
       }
@@ -75,12 +111,105 @@ class GrabBot {
     }
   }
 
+  /** True when the page is on an authenticated merchant view, not the login flow. */
+  async onPortal(timeout = 15000) {
+    try {
+      await this.page.waitForFunction(
+        () => document.querySelector('[data-testid="datePicker"], .sidebar-menu-item-title'),
+        { timeout }
+      );
+    } catch (e) {
+      return false;
+    }
+    const url = this.page.url();
+    return !url.includes('login') && !url.includes('challenge');
+  }
+
+  async saveCookies() {
+    try {
+      const cookies = await this.page.cookies();
+      await fs.ensureDir(PROFILE_DIR);
+      await fs.writeJson(COOKIE_FILE, { savedAt: new Date().toISOString(), cookies });
+      logger.puppeteer(`Cached ${cookies.length} session cookies`);
+    } catch (e) {
+      logger.puppeteer(`Could not cache cookies: ${e.message}`);
+    }
+  }
+
+  async restoreCookies() {
+    try {
+      if (!(await fs.pathExists(COOKIE_FILE))) return false;
+      const { cookies } = await fs.readJson(COOKIE_FILE);
+      if (!Array.isArray(cookies) || !cookies.length) return false;
+      const now = Date.now() / 1000;
+      const live = cookies.filter(c => !c.expires || c.expires === -1 || c.expires > now);
+      if (!live.length) return false;
+      await this.page.setCookie(...live);
+      logger.puppeteer(`Restored ${live.length} cached cookies`);
+      return true;
+    } catch (e) {
+      logger.puppeteer(`Could not restore cookies: ${e.message}`);
+      return false;
+    }
+  }
+
+  /**
+   * Reuse an existing portal session instead of logging in again.
+   *
+   * Two layers, because Chromium does not always flush its cookie jar when a
+   * one-shot process is torn down: the persistent profile, then a cookie snapshot
+   * written at login. Both are cheap and neither can make things worse — a failed
+   * check simply falls through to the normal login path.
+   */
+  async tryReuseSession() {
+    if (process.env.REUSE_GRAB_SESSION === 'false') {
+      logger.puppeteer('Session reuse disabled (REUSE_GRAB_SESSION=false)');
+      return false;
+    }
+    const portal = 'https://merchant.grab.com/portal';
+    try {
+      logger.puppeteer('Checking for an existing portal session...');
+      await this.page.goto(portal, { waitUntil: 'domcontentloaded', timeout: 30000 });
+      if (await this.onPortal()) {
+        return this.markSessionReused();
+      }
+
+      logger.puppeteer('No live session in the profile, trying cached cookies...');
+      if (await this.restoreCookies()) {
+        await this.page.goto(portal, { waitUntil: 'domcontentloaded', timeout: 30000 });
+        if (await this.onPortal()) {
+          return this.markSessionReused();
+        }
+      }
+
+      logger.puppeteer('No reusable session — performing a full login');
+      return false;
+    } catch (e) {
+      logger.puppeteer(`Session reuse check failed, falling back to login: ${e.message}`);
+      return false;
+    }
+  }
+
+  markSessionReused() {
+    this.isLoggedIn = true;
+    this.lastActivity = Date.now();
+    logger.puppeteer('Login successful (existing session reused — no device event)');
+    return true;
+  }
+
   async login() {
     try {
       logger.puppeteer('Starting login process...');
 
       if (!this.page) {
         await this.initBrowser();
+      }
+
+      // Reuse the session stored in the profile before typing credentials. This is
+      // what stops the device-login email flood: a valid session means no new
+      // device event at Grab.
+      if (await this.tryReuseSession()) {
+        return true;
       }
 
       const username = process.env.GRAB_USERNAME;
@@ -255,6 +384,7 @@ class GrabBot {
       this.isLoggedIn = true;
       this.lastActivity = Date.now();
       logger.puppeteer('Login successful');
+      await this.saveCookies();
 
       await this.closePopups();
 
