@@ -66,7 +66,7 @@ A free, open-source automation tool designed to fetch order data from Grab Merch
 
 ### Prerequisites
 
-- Node.js 18+ installed
+- Node.js 22.17+ installed (or Node 24+)
 - MongoDB Atlas account (free tier)
 - Grab Merchant account with portal access
 - Git installed
@@ -304,7 +304,7 @@ Two deployment approaches are available:
 #### Prerequisites
 
 - A Linux server (Ubuntu 20.04+ recommended) or macOS machine running 24/7
-- Node.js 18+ installed
+- Node.js 22.17+ installed (or Node 24+)
 - PM2 installed globally: `npm i -g pm2` (for Option A) **or** systemd available (for Option B, default on most Linux distros)
 - MongoDB Atlas account (free tier)
 - Grab Merchant account with portal access
