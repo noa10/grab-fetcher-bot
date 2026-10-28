@@ -77,3 +77,4 @@ temp/
 .browser-profile*/
 session-cookies.json
 node_modules
+.env*
