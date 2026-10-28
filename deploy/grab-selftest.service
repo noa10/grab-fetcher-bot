@@ -1,0 +1,21 @@
+# Test fixture for the alerting wiring — always fails on purpose.
+#
+#   sudo cp deploy/grab-selftest.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+#   sudo systemctl start grab-selftest.service
+#   sudo journalctl -u grab-alert@grab-selftest.service -n 20
+#
+# Expect one Telegram failure message. Starting it again immediately must NOT
+# send a second one (throttled), while the counter in /var/tmp/grab-alert keeps
+# climbing. Flip ExecStart to `true` and start it again to exercise the recovery
+# message. Remove it afterwards:
+#
+#   sudo rm /etc/systemd/system/grab-selftest.service && sudo systemctl daemon-reload
+[Unit]
+Description=Grab alert self-test (fails on purpose) — test fixture, not part of the bot
+OnFailure=grab-alert@%N.service
+OnSuccess=grab-recover@%N.service
+
+[Service]
+Type=oneshot
+ExecStart=/bin/sh -c 'echo "grab-selftest: simulating a portal login failure"; echo "Login failed: synthetic test"; exit 1'
