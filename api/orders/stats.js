@@ -2,17 +2,18 @@
 const database = require('../../src/config/database');
 const Order = require('../../src/models/Order');
 const { getMalaysiaDateString, mytDayStart } = require('../../src/utils/helpers');
+const { requireAuth } = require('../../src/api/serverless-auth');
 
 module.exports = async (req, res) => {
   // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') {
     res.status(200).end();
     return;
   }
+
+  // Private data. These handlers used to answer with a wildcard CORS header
+  // and no authentication at all, which published customer PII.
+  if (!requireAuth(req, res)) return;
 
   if (req.method !== 'GET') {
     res.status(405).json({ error: 'Method not allowed' });

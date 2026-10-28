@@ -25,6 +25,13 @@ concurrency:
   group: test-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+# Least privilege for GITHUB_TOKEN. Without this block the token inherits the
+# repository default (often read/write on contents, packages and more), which is
+# what CodeQL's actions/missing-workflow-permissions flags on both jobs below.
+# Nothing here pushes, comments or publishes, so read-only is the whole grant.
+permissions:
+  contents: read
+
 jobs:
   test:
     name: Unit and integration tests

@@ -2,6 +2,34 @@
 
 A free, open-source automation tool designed to fetch order data from Grab Merchant portal using browser automation. This bot helps merchants without API access to automatically collect and store order information.
 
+## 🚀 Run it with your own account
+
+This repository is a **tool you deploy for yourself**, not a hosted service. Each
+instance signs in with one Grab Merchant account, stores data in one MongoDB
+database you control, and protects the dashboard with an admin login you set.
+
+- **Hosted project page:** https://grab-fetcher-bot.vercel.app/ — what the tool does and how to deploy it (no merchant data).
+- **Dashboard:** `https://<your-deployment>/dashboard` — requires the admin login from your environment.
+- **Deploy your own:** [![Deploy with Vercel](https://vercel.com/button)](https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2Fnoa10%2Fgrab-fetcher-bot)
+- **Self-host:** jump to [Quick Start](#-quick-start) and run it with systemd or PM2.
+
+Minimum environment for any deployment:
+
+```env
+GRAB_USERNAME=you@example.com      # your own Grab Merchant account
+GRAB_PASSWORD=...
+MONGODB_URI=mongodb+srv://...      # your own database
+
+ADMIN_USERNAME=admin               # guards the dashboard
+ADMIN_PASSWORD=a-strong-password
+SESSION_SECRET=$(openssl rand -hex 64)
+```
+
+Every dashboard endpoint on the serverless deployment is authenticated with a
+signed `HttpOnly` cookie issued by `POST /api/auth/login`. There is no anonymous
+data endpoint and no wildcard CORS: see [SECURITY.md](SECURITY.md) if you find a
+way around that.
+
 ## ⚠️ Important Disclaimer
 
 **This tool is for educational and personal use only.** Using automated tools to scrape websites may violate the terms of service of the target website. Users are responsible for:

@@ -1,12 +1,8 @@
 // Vercel serverless function for root endpoint
 module.exports = async (req, res) => {
   // Set CORS headers
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
+    res.status(204).end();
     return;
   }
 
@@ -27,7 +23,7 @@ module.exports = async (req, res) => {
         stats: '/api/orders/stats',
         export: '/api/orders/export'
       },
-      documentation: 'https://github.com/khairulanwar/grab-fetcher-bot',
+      documentation: 'https://github.com/noa10/grab-fetcher-bot',
       deployment: 'vercel-serverless'
     };
 
