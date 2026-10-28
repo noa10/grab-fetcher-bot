@@ -953,6 +953,15 @@ function getDashboardHTML() {
         .review-link:hover { text-decoration: underline; }
         .review-pagination { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px; }
         .review-empty { text-align: center; padding: 44px 20px; color: var(--text-secondary); background: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--radius-md); font-size: 14px; }
+        .review-thumbs { display: flex; flex-wrap: wrap; gap: 8px; margin: 2px 0 12px; }
+        .review-thumb { padding: 0; width: 78px; height: 78px; border: 1px solid var(--border-color); border-radius: 8px; overflow: hidden; background: var(--bg-tertiary); cursor: zoom-in; }
+        .review-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+        .review-thumb:hover { border-color: var(--grab-green); }
+        .lightbox { position: fixed; inset: 0; background: rgba(15, 23, 42, .88); display: none; align-items: center; justify-content: center; padding: 24px; z-index: 1200; }
+        .lightbox.open { display: flex; }
+        .lightbox img { max-width: 92vw; max-height: 88vh; border-radius: 10px; box-shadow: 0 24px 60px rgba(0, 0, 0, .5); }
+        .lightbox-close { position: absolute; top: 16px; right: 20px; width: 40px; height: 40px; border-radius: 999px; border: none; background: rgba(255,255,255,.14); color: #fff; font-size: 22px; line-height: 1; cursor: pointer; }
+        .lightbox-close:hover { background: rgba(255,255,255,.26); }
         .review-error { text-align: center; padding: 30px 20px; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-md); font-size: 14px; }
 
     </style>
@@ -1359,6 +1368,11 @@ function getDashboardHTML() {
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js" onerror="document.querySelectorAll('.chart-container').forEach(c=>c.innerHTML='<p style=\\'text-align:center;color:var(--text-muted);padding:40px;\\'>Chart.js failed to load. Check your network connection.</p>')"></script>
+    <div class="lightbox" id="reviewLightbox" role="dialog" aria-modal="true" aria-label="Review photo">
+        <button class="lightbox-close" id="reviewLightboxClose" aria-label="Close">&times;</button>
+        <img id="reviewLightboxImg" alt="Review photo">
+    </div>
+
     <script>
         const state = {
             orders: [],
@@ -1995,6 +2009,34 @@ function getDashboardHTML() {
         // machines whose UI font lacks them (seen on the landing page).
         const REVIEW_STAR = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.7l5.9-.9z"/></svg>';
 
+        // Review photos are Grab CloudFront links signed with a very long expiry
+        // (the ones in the collection run to 2065-66), so they can be rendered
+        // straight from the browser. Only https image URLs are accepted: a
+        // compromised record must not be able to inject javascript: or a
+        // non-image origin into the src attribute.
+        function reviewPhotoUrls(review) {
+            const urls = Array.isArray(review.imageUrls) ? review.imageUrls : [];
+            return urls.filter(function (u) {
+                if (typeof u !== 'string' || !/^https:\\/\\//i.test(u)) return false;
+                return /\\.(jpe?g|png|webp|gif)(\\?|$)/i.test(u);
+            });
+        }
+
+        function openReviewPhoto(url) {
+            const box = document.getElementById('reviewLightbox');
+            const img = document.getElementById('reviewLightboxImg');
+            if (!box || !img) return;
+            img.src = url;
+            box.classList.add('open');
+        }
+
+        function closeReviewPhoto() {
+            const box = document.getElementById('reviewLightbox');
+            const img = document.getElementById('reviewLightboxImg');
+            if (box) box.classList.remove('open');
+            if (img) img.src = '';
+        }
+
         async function fetchReviews() {
             if (reviewState.loading) return;
             reviewState.loading = true;
@@ -2069,8 +2111,20 @@ function getDashboardHTML() {
                     return '<span class="aspect-chip ' + verdict + '">' +
                         reviewEscape(a.aspectName || a.aspectId) + '</span>';
                 }).join('');
-                const photos = (r.imageUrls || []).length;
+                const photoUrls = reviewPhotoUrls(r);
+                const photos = photoUrls.length;
                 const items = (r.orderedItems || []).length;
+                // Grab returns at most a couple of photos per review, so every one
+                // gets a thumbnail; no "+N more" affordance to half-implement.
+                const thumbs = photos
+                    ? '<div class="review-thumbs">' +
+                        photoUrls.map(function (u, i) {
+                            return '<button type="button" class="review-thumb" data-photo="' + reviewEscape(u) + '">' +
+                                '<img src="' + reviewEscape(u) + '" loading="lazy" decoding="async" referrerpolicy="no-referrer" alt="Review photo ' + (i + 1) + '">' +
+                            '</button>';
+                        }).join('') +
+                      '</div>'
+                    : '';
                 const orderBtn = r.orderID
                     ? '<button class="review-link" data-order="' + reviewEscape(r.orderID) +
                       '" data-when="' + reviewEscape(new Date(r.createdAt).toISOString()) + '">View order ' +
@@ -2089,6 +2143,7 @@ function getDashboardHTML() {
                         ? '<p class="review-text">' + reviewEscape(r.description) + '</p>'
                         : '<p class="review-text" style="color:var(--text-muted)">No written review.</p>') +
                     (aspects ? '<div class="review-aspects">' + aspects + '</div>' : '') +
+                    thumbs +
                     '<div class="review-foot">' +
                         (r.serviceType ? '<span>' + reviewEscape(r.serviceType) + '</span>' : '') +
                         (items ? '<span>' + items + (items === 1 ? ' item' : ' items') + '</span>' : '') +
@@ -2101,6 +2156,11 @@ function getDashboardHTML() {
             el.querySelectorAll('[data-order]').forEach(function (btn) {
                 btn.addEventListener('click', function () {
                     viewReviewOrder(btn.getAttribute('data-order'), btn.getAttribute('data-when'));
+                });
+            });
+            el.querySelectorAll('[data-photo]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    openReviewPhoto(btn.getAttribute('data-photo'));
                 });
             });
         }
@@ -2456,6 +2516,14 @@ function getDashboardHTML() {
 
             document.getElementById('searchInput').addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') applyFilters();
+            });
+
+            document.getElementById('reviewLightbox').addEventListener('click', function (e) {
+                if (e.target.id === 'reviewLightbox') closeReviewPhoto();
+            });
+            document.getElementById('reviewLightboxClose').addEventListener('click', closeReviewPhoto);
+            document.addEventListener('keydown', function (e) {
+                if (e.key === 'Escape') closeReviewPhoto();
             });
 
             document.getElementById('reviewApply').addEventListener('click', applyReviewFilters);
