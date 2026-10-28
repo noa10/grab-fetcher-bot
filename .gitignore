@@ -73,6 +73,7 @@ temp/
 .sisyphus/
 
 # Persistent browser profile (device identity + session cookies)
-.browser-profile/
+# The feedback unit sets BROWSER_PROFILE_DIR, so match every profile dir.
+.browser-profile*/
 session-cookies.json
 node_modules
