@@ -926,6 +926,35 @@ function getDashboardHTML() {
             .filter-input, .filter-select { font-size: 16px; }
             .nav-item { padding: 12px 10px; }
         }
+        /* ---------- Reviews view ---------- */
+        .review-summary { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 18px; }
+        @media (max-width: 900px) { .review-summary { grid-template-columns: repeat(2, 1fr); } }
+        .review-stat { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 14px 16px; }
+        .review-stat-label { font-size: 11px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: .5px; margin-bottom: 6px; }
+        .review-stat-value { font-size: 22px; font-weight: 700; line-height: 1.1; }
+        .review-stat-sub { font-size: 11.5px; color: var(--text-secondary); margin-top: 4px; }
+        .review-list { display: flex; flex-direction: column; gap: 12px; }
+        .review-card { background: var(--bg-card); border: 1px solid var(--border-color); border-radius: var(--radius-md); padding: 16px 18px; box-shadow: var(--shadow-sm); }
+        .review-head { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
+        .review-stars { display: inline-flex; align-items: center; color: #f59e0b; font-weight: 700; font-size: 13px; }
+        .review-who { font-weight: 600; font-size: 14px; }
+        .review-when { color: var(--text-secondary); font-size: 12.5px; }
+        .review-badge { margin-left: auto; font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; }
+        .review-badge.pending { background: #fff7e6; color: #92400e; border: 1px solid #fde68a; }
+        .review-badge.replied { background: #ecfdf5; color: #065f46; border: 1px solid #a7f3d0; }
+        .review-text { color: var(--text-primary); font-size: 14px; line-height: 1.55; margin: 6px 0 10px; white-space: pre-wrap; }
+        .review-aspects { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+        .aspect-chip { font-size: 11.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid transparent; }
+        .aspect-chip.positive { background: #ecfdf5; color: #065f46; border-color: #a7f3d0; }
+        .aspect-chip.negative { background: #fef2f2; color: #991b1b; border-color: #fecaca; }
+        .aspect-chip.mentioned { background: var(--bg-tertiary); color: var(--text-secondary); border-color: var(--border-color); }
+        .review-foot { display: flex; flex-wrap: wrap; gap: 14px; align-items: center; font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border-light); padding-top: 10px; }
+        .review-link { color: var(--grab-green-dark); font-weight: 600; cursor: pointer; background: none; border: none; padding: 0; font-size: 12px; font-family: inherit; }
+        .review-link:hover { text-decoration: underline; }
+        .review-pagination { display: flex; align-items: center; justify-content: center; gap: 14px; margin-top: 18px; }
+        .review-empty { text-align: center; padding: 44px 20px; color: var(--text-secondary); background: var(--bg-card); border: 1px dashed var(--border-color); border-radius: var(--radius-md); font-size: 14px; }
+        .review-error { text-align: center; padding: 30px 20px; color: #991b1b; background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius-md); font-size: 14px; }
+
     </style>
 </head>
 <body>
@@ -953,6 +982,10 @@ function getDashboardHTML() {
                 <a class="nav-item" data-view="orders">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2"/><rect x="9" y="3" width="6" height="4" rx="1"/></svg>
                     <span class="nav-text">All Orders</span>
+                </a>
+                <a class="nav-item" data-view="reviews">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
+                    <span class="nav-text">Reviews</span>
                 </a>
                 <a class="nav-item" data-view="marketing">
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
@@ -1256,6 +1289,53 @@ function getDashboardHTML() {
                         </div>
                     </div>
                     <p class="notice-text">Exported data includes customer name and phone for outreach purposes. Handle in accordance with PDPA / applicable data protection laws.</p>
+                </div>
+
+                <div class="view" id="reviewsView">
+                    <div class="filter-bar">
+                        <div class="filter-group">
+                            <label class="filter-label" for="reviewRating">Rating</label>
+                            <select class="filter-select" id="reviewRating">
+                                <option value="">All ratings</option>
+                                <option value="5">5 stars only</option>
+                                <option value="4">4 stars only</option>
+                                <option value="3">3 stars only</option>
+                                <option value="2">2 stars only</option>
+                                <option value="1">1 star only</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label" for="reviewReplied">Reply status</label>
+                            <select class="filter-select" id="reviewReplied">
+                                <option value="">All statuses</option>
+                                <option value="false">Awaiting reply</option>
+                                <option value="true">Replied</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label" for="reviewPeriod">Period</label>
+                            <select class="filter-select" id="reviewPeriod">
+                                <option value="30">Last 30 days</option>
+                                <option value="90">Last 90 days</option>
+                                <option value="365">Last 12 months</option>
+                                <option value="" selected>All time</option>
+                            </select>
+                        </div>
+                        <div class="filter-group">
+                            <label class="filter-label" for="reviewSearch">Search</label>
+                            <input class="filter-input" id="reviewSearch" placeholder="Customer, order ID or review text">
+                        </div>
+                        <div class="filter-actions">
+                            <button class="btn btn-primary btn-sm" id="reviewApply">Apply</button>
+                            <button class="btn btn-secondary btn-sm" id="reviewReset">Reset</button>
+                        </div>
+                    </div>
+
+                    <div class="review-summary" id="reviewSummary"></div>
+                    <div class="review-list" id="reviewList">
+                        <div class="review-empty">Loading reviews...</div>
+                    </div>
+                    <div class="review-pagination" id="reviewPagination"></div>
                 </div>
 
             </div>
@@ -1901,6 +1981,179 @@ function getDashboardHTML() {
             fetchOrders();
         }
 
+        // ---------- Reviews ----------
+        const reviewState = { page: 1, limit: 20, rating: '', replied: '', days: '', search: '', loading: false };
+
+        function reviewEscape(text) {
+            if (text === null || text === undefined) return '';
+            return String(text).replace(/[&<>"']/g, function (c) {
+                return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+            });
+        }
+
+        // One inline star rather than five glyphs: ★/☆ fall back to tofu boxes on
+        // machines whose UI font lacks them (seen on the landing page).
+        const REVIEW_STAR = '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor" style="vertical-align:-2px;margin-right:4px"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.9-5.2-2.8-5.2 2.8 1-5.9L3.5 9.7l5.9-.9z"/></svg>';
+
+        async function fetchReviews() {
+            if (reviewState.loading) return;
+            reviewState.loading = true;
+            const list = document.getElementById('reviewList');
+            if (list) list.innerHTML = '<div class="review-empty">Loading reviews...</div>';
+
+            try {
+                const params = new URLSearchParams();
+                params.set('page', reviewState.page);
+                params.set('limit', reviewState.limit);
+                if (reviewState.rating) params.set('rating', reviewState.rating);
+                if (reviewState.replied) params.set('replied', reviewState.replied);
+                if (reviewState.days) params.set('days', reviewState.days);
+                if (reviewState.search) params.set('search', reviewState.search);
+
+                const res = await fetch('/api/feedback?' + params.toString());
+                if (res.status === 401) { window.location.href = '/login'; return; }
+                const body = await res.json();
+                if (!body.success) throw new Error(body.message || 'Failed to load reviews');
+
+                renderReviewSummary(body.summary);
+                const stale = document.getElementById('lastUpdate');
+                if (stale && body.summary) stale.textContent = body.summary.total + ' reviews stored';
+                renderReviewList(body.data);
+                renderReviewPagination(body.pagination);
+            } catch (err) {
+                if (list) list.innerHTML = '<div class="review-error">Could not load reviews: ' + reviewEscape(err.message) + '</div>';
+            } finally {
+                reviewState.loading = false;
+            }
+        }
+
+        function renderReviewSummary(summary) {
+            const el = document.getElementById('reviewSummary');
+            if (!el) return;
+            if (!summary) { el.innerHTML = ''; return; }
+            const dist = summary.distribution || {};
+            const five = dist[5] || 0;
+
+            function card(label, value, sub) {
+                return '<div class="review-stat">' +
+                    '<div class="review-stat-label">' + label + '</div>' +
+                    '<div class="review-stat-value">' + value + '</div>' +
+                    '<div class="review-stat-sub">' + sub + '</div>' +
+                '</div>';
+            }
+
+            el.innerHTML =
+                card('Reviews', summary.total, summary.withPhotos + ' with photos') +
+                card('Average rating', summary.average === null ? '-' : summary.average.toFixed(1), 'out of 5') +
+                card('Awaiting reply', summary.unreplied, 'no merchant reply yet') +
+                card('5-star share', summary.total ? Math.round((five / summary.total) * 100) + '%' : '-', five + ' of ' + summary.total);
+        }
+
+        function renderReviewList(reviews) {
+            const el = document.getElementById('reviewList');
+            if (!el) return;
+            if (!reviews || !reviews.length) {
+                el.innerHTML = '<div class="review-empty">No reviews match these filters yet.</div>';
+                return;
+            }
+
+            el.innerHTML = reviews.map(function (r) {
+                const when = new Date(r.createdAt).toLocaleString('en-MY', {
+                    timeZone: 'Asia/Kuala_Lumpur', day: '2-digit', month: 'short', year: 'numeric',
+                    hour: '2-digit', minute: '2-digit'
+                });
+                const replied = Array.isArray(r.merchantReplies) && r.merchantReplies.length > 0;
+                const aspects = (r.aspects || []).map(function (a) {
+                    const verdict = a.sentiment === 'positive' ? 'positive'
+                        : (a.sentiment === 'negative' ? 'negative' : 'mentioned');
+                    return '<span class="aspect-chip ' + verdict + '">' +
+                        reviewEscape(a.aspectName || a.aspectId) + '</span>';
+                }).join('');
+                const photos = (r.imageUrls || []).length;
+                const items = (r.orderedItems || []).length;
+                const orderBtn = r.orderID
+                    ? '<button class="review-link" data-order="' + reviewEscape(r.orderID) +
+                      '" data-when="' + reviewEscape(new Date(r.createdAt).toISOString()) + '">View order ' +
+                      reviewEscape(String(r.orderID).slice(-6)) + '</button>'
+                    : '';
+
+                return '<article class="review-card">' +
+                    '<div class="review-head">' +
+                        '<span class="review-stars">' + REVIEW_STAR + (Number(r.rating) || 0) + '</span>' +
+                        '<span class="review-who">' + reviewEscape(r.customerName || 'Anonymous') + '</span>' +
+                        '<span class="review-when">' + reviewEscape(when) + ' MYT</span>' +
+                        '<span class="review-badge ' + (replied ? 'replied' : 'pending') + '">' +
+                            (replied ? 'Replied' : 'Awaiting reply') + '</span>' +
+                    '</div>' +
+                    (r.description
+                        ? '<p class="review-text">' + reviewEscape(r.description) + '</p>'
+                        : '<p class="review-text" style="color:var(--text-muted)">No written review.</p>') +
+                    (aspects ? '<div class="review-aspects">' + aspects + '</div>' : '') +
+                    '<div class="review-foot">' +
+                        (r.serviceType ? '<span>' + reviewEscape(r.serviceType) + '</span>' : '') +
+                        (items ? '<span>' + items + (items === 1 ? ' item' : ' items') + '</span>' : '') +
+                        (photos ? '<span>' + photos + (photos === 1 ? ' photo' : ' photos') + '</span>' : '') +
+                        orderBtn +
+                    '</div>' +
+                '</article>';
+            }).join('');
+
+            el.querySelectorAll('[data-order]').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    viewReviewOrder(btn.getAttribute('data-order'), btn.getAttribute('data-when'));
+                });
+            });
+        }
+
+        function renderReviewPagination(p) {
+            const el = document.getElementById('reviewPagination');
+            if (!el) return;
+            if (!p || !p.totalCount) { el.innerHTML = ''; return; }
+
+            el.innerHTML =
+                '<button class="btn btn-secondary btn-sm" id="reviewPrev"' + (p.hasPrevPage ? '' : ' disabled') + '>Previous</button>' +
+                '<span style="font-size:12.5px;color:var(--text-secondary)">Page ' + p.currentPage + ' of ' + p.totalPages +
+                    ' &middot; ' + p.totalCount + ' reviews</span>' +
+                '<button class="btn btn-secondary btn-sm" id="reviewNext"' + (p.hasNextPage ? '' : ' disabled') + '>Next</button>';
+
+            document.getElementById('reviewPrev').addEventListener('click', function () {
+                if (!p.hasPrevPage) return;
+                reviewState.page = p.currentPage - 1;
+                fetchReviews();
+            });
+            document.getElementById('reviewNext').addEventListener('click', function () {
+                if (!p.hasNextPage) return;
+                reviewState.page = p.currentPage + 1;
+                fetchReviews();
+            });
+        }
+
+        function applyReviewFilters() {
+            reviewState.rating = document.getElementById('reviewRating').value;
+            reviewState.replied = document.getElementById('reviewReplied').value;
+            reviewState.days = document.getElementById('reviewPeriod').value;
+            reviewState.search = document.getElementById('reviewSearch').value.trim();
+            reviewState.page = 1;
+            fetchReviews();
+        }
+
+        // Jump from a review to the order it belongs to: fill the All Orders
+        // filters with the long order id and that MYT day, then switch views.
+        function viewReviewOrder(orderId, isoWhen) {
+            const when = new Date(isoWhen);
+            const mytDay = new Date(when.getTime() + 8 * 60 * 60 * 1000).toISOString().slice(0, 10);
+
+            document.getElementById('searchInput').value = orderId;
+            document.getElementById('statusFilter').value = '';
+            document.getElementById('orderTypeFilter').value = '';
+            document.getElementById('dateFrom').value = mytDay;
+            document.getElementById('dateTo').value = mytDay;
+
+            state.filters = { search: orderId, status: '', orderType: '', dateFrom: mytDay, dateTo: mytDay };
+            state.pagination.currentPage = 1;
+            switchView('orders');
+        }
+
         function switchView(view) {
             if (window.rfmChartInstance) { window.rfmChartInstance.destroy(); window.rfmChartInstance = null; }
             if (window.cohortChartInstance) { window.cohortChartInstance.destroy(); window.cohortChartInstance = null; }
@@ -1923,6 +2176,12 @@ function getDashboardHTML() {
                 document.getElementById('headerSubtitle').textContent = 'Manage and filter your orders';
                 if (!state.filters.dateFrom) setPeriod('today');
                 else fetchOrders();
+            } else if (view === 'reviews') {
+                document.getElementById('reviewsView').classList.add('active');
+                document.querySelector('[data-view="reviews"]').classList.add('active');
+                document.getElementById('headerTitle').textContent = 'Reviews';
+                document.getElementById('headerSubtitle').textContent = 'Customer feedback fetched from Grab Merchant';
+                fetchReviews();
             } else if (view === 'marketing') {
                 document.getElementById('marketingView').classList.add('active');
                 document.querySelector('[data-view="marketing"]').classList.add('active');
@@ -2108,7 +2367,7 @@ function getDashboardHTML() {
                     fetchSummary();
                 } else if (state.currentView === 'marketing') {
                     fetchMarketingData();
-                } else {
+                } else if (state.currentView === 'orders') {
                     fetchOrders();
                 }
             });
@@ -2199,15 +2458,27 @@ function getDashboardHTML() {
                 if (e.key === 'Enter') applyFilters();
             });
 
+            document.getElementById('reviewApply').addEventListener('click', applyReviewFilters);
+            document.getElementById('reviewReset').addEventListener('click', () => {
+                document.getElementById('reviewRating').value = '';
+                document.getElementById('reviewReplied').value = '';
+                document.getElementById('reviewPeriod').value = '';
+                document.getElementById('reviewSearch').value = '';
+                applyReviewFilters();
+            });
+            document.getElementById('reviewSearch').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') applyReviewFilters();
+            });
+
             const requestedView = new URLSearchParams(window.location.search).get('view');
-            switchView(['dashboard', 'orders', 'marketing'].includes(requestedView) ? requestedView : 'dashboard');
+            switchView(['dashboard', 'orders', 'marketing', 'reviews'].includes(requestedView) ? requestedView : 'dashboard');
             setInterval(() => {
                 updateDateDisplays();
                 if (state.currentView === 'dashboard') {
                     fetchSummary();
                 } else if (state.currentView === 'marketing') {
                     fetchMarketingData();
-                } else {
+                } else if (state.currentView === 'orders') {
                     fetchOrders();
                 }
             }, 60000);
