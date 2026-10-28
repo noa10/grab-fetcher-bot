@@ -1,0 +1,33 @@
+# Recovery message for a grab-* unit that previously alerted. Triggered by:
+#
+#   [Unit]
+#   OnSuccess=grab-recover@%N.service
+#
+# Fires on every successful run, so the script must stay cheap when there is
+# nothing to report: it stats one state file and exits. A message is only sent
+# for a unit that had a failure alert outstanding.
+#
+# Install with:
+#   sudo cp deploy/grab-alert@.service deploy/grab-recover@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+[Unit]
+Description=Telegram recovery notice for %i.service
+Documentation=https://github.com/noa10/grab-fetcher-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+ExecStart=/home/ubuntu/repos/grab-fetcher-bot/deploy/grab-alert.sh %i success
+TimeoutStartSec=120
+Nice=19
+
+# This runs every 5 minutes on the order bot; keep its start/finish chatter out
+# of the journal so real output stays readable.
+LogLevelMax=notice
+SuccessExitStatus=0 1 2
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=grab-recover

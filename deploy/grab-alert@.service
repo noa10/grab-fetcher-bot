@@ -1,0 +1,30 @@
+# Alert for a failed grab-* unit. Not enabled directly — triggered by a drop-in:
+#
+#   [Unit]
+#   OnFailure=grab-alert@%N.service
+#
+# %N is the failing unit's name without ".service", so this instance becomes
+# grab-alert@grab-fetcher.service and the script resolves "grab-fetcher.service".
+#
+# Install with:
+#   sudo cp deploy/grab-alert@.service deploy/grab-recover@.service /etc/systemd/system/
+#   sudo systemctl daemon-reload
+[Unit]
+Description=Telegram alert for failed %i.service
+Documentation=https://github.com/noa10/grab-fetcher-bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+Group=ubuntu
+ExecStart=/home/ubuntu/repos/grab-fetcher-bot/deploy/grab-alert.sh %i failure
+TimeoutStartSec=120
+Nice=10
+
+# Alerting must never take the bot down with it.
+SuccessExitStatus=0 1 2
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=grab-alert
