@@ -3,6 +3,7 @@ const Order = require('../src/models/Order');
 const Customer = require('../src/models/Customer');
 const MarketingCache = require('../src/models/MarketingCache');
 const { sanitizeCsvField } = require('../src/utils/inputSanitizer');
+const { requireAuth } = require('../src/api/serverless-auth');
 
 const rebuildMutex = { promise: null };
 
@@ -28,8 +29,9 @@ async function getCachedOrCompute(cacheKey, computeFn) {
   return data;
 }
 
+// No wildcard CORS: these endpoints expose customer segments and exports, and
+// the browser only ever calls them same-origin from /dashboard.
 function setCORS(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
@@ -323,6 +325,8 @@ module.exports = async (req, res) => {
   setCORS(res);
 
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!requireAuth(req, res)) return;
+
   if (req.method !== 'GET') return res.status(405).json({ success: false, message: 'Method not allowed' });
   if (!checkMarketingEnabled()) return res.status(503).json({ success: false, message: 'Marketing analytics is disabled' });
 

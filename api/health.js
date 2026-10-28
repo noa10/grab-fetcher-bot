@@ -3,12 +3,10 @@ const database = require('../src/config/database');
 const getHealthHTML = require('../src/api/health-template');
 
 module.exports = async (req, res) => {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Cache-Control', 'no-store');
 
   if (req.method === 'OPTIONS') {
-    res.status(200).end();
+    res.status(204).end();
     return;
   }
 
@@ -26,9 +24,7 @@ module.exports = async (req, res) => {
     const health = {
       status: 'ok',
       timestamp: new Date().toISOString(),
-      uptime: process.uptime(),
       database: dbHealth,
-      memory: process.memoryUsage(),
       version: process.env.npm_package_version || '1.0.0',
       deployment: 'vercel-serverless'
     };
