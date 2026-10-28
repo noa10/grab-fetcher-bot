@@ -234,17 +234,24 @@ class GrabBot {
     const portal = 'https://merchant.grab.com/portal';
     try {
       logger.puppeteer('Checking for an existing portal session...');
+
+      // Restore the cookie snapshot BEFORE the first navigation. Hitting weblogin
+      // with no session bounces through the saved-account chooser and rotates the
+      // auth token, so a restore applied after that redirect is already stale —
+      // which is why every poll used to fall through to a full login.
+      const restored = await this.restoreCookies();
+
       await this.page.goto(portal, { waitUntil: 'domcontentloaded', timeout: 30000 });
       if (await this.onPortal()) {
         return this.markSessionReused();
       }
 
-      logger.puppeteer('No live session in the profile, trying cached cookies...');
-      if (await this.restoreCookies()) {
-        await this.page.goto(portal, { waitUntil: 'domcontentloaded', timeout: 30000 });
-        if (await this.onPortal()) {
-          return this.markSessionReused();
-        }
+      if (restored) {
+        // The snapshot was applied but the portal still bounced us; a second
+        // navigation adds nothing except another login round-trip at Grab.
+        logger.puppeteer('Cached cookies did not authenticate — full login required');
+      } else {
+        logger.puppeteer('No live session in the profile and no cookie snapshot');
       }
 
       logger.puppeteer('No reusable session — performing a full login');
