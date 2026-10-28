@@ -1,0 +1,19 @@
+# 14:45 UTC = 22:45 MYT, fifteen minutes after the trading window closes at
+# 22:30 and well clear of the final poll still being in flight. The zone suffix
+# is honoured by systemd 249+, so this survives a server running on UTC.
+#
+#   sudo cp deploy/grab-heartbeat.service deploy/grab-heartbeat.timer /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now grab-heartbeat.timer
+[Unit]
+Description=Daily Grab heartbeat timer (22:45 MYT)
+Documentation=https://github.com/noa10/grab-fetcher-bot
+
+[Timer]
+OnCalendar=*-*-* 14:45:00 UTC
+# A heartbeat missed because the box was down is worth sending late, not skipping.
+Persistent=true
+AccuracySec=1min
+Unit=grab-heartbeat.service
+
+[Install]
+WantedBy=timers.target
