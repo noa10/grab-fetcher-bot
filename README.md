@@ -536,6 +536,39 @@ server {
 }
 ```
 
+#### Alerting on Failures
+
+A timer that fires every 5 minutes can fail all day without anyone noticing — a
+login-flow change once cost six days of orders with nothing but `exit 1` in the
+journal. Two template units fix that with drop-ins, so the unit files above stay
+untouched:
+
+```bash
+sudo cp deploy/grab-alert@.service deploy/grab-recover@.service /etc/systemd/system/
+sudo mkdir -p /etc/systemd/system/grab-fetcher.service.d
+printf '[Unit]\nOnFailure=grab-alert@%%N.service\nOnSuccess=grab-recover@%%N.service\n' \
+  | sudo tee /etc/systemd/system/grab-fetcher.service.d/alerting.conf
+sudo install -d -o ubuntu -g ubuntu /var/tmp/grab-alert
+sudo systemctl daemon-reload
+```
+
+A failure sends one Telegram message with the exit status, how long it has been
+failing, the deduped journal tail and the login screenshot when it is fresh.
+Repeats are throttled to one per 4 hours (288 messages a day otherwise); a
+recovery message follows the first successful run.
+
+Delivery uses `hermes send`, which reuses the messaging platform credentials
+already configured for Hermes — no bot token lives in this repo. Override the
+destination or the threshold with `GRAB_ALERT_TARGET` (default `telegram`) and
+`GRAB_ALERT_THROTTLE` (seconds, default `14400`).
+
+Test it without breaking anything real:
+
+```bash
+sudo systemctl start grab-selftest.service   # a throwaway unit that exits 1
+sudo journalctl -u grab-alert@grab-selftest.service -n 20
+```
+
 ### Cloud Deployment (Legacy — Deprecated)
 
 > The GitHub Actions + Vercel deployment model is deprecated. Running the fetcher on GitHub Actions at 5-minute intervals during operating hours uses ~12,500 minutes/month, which exceeds the free tier limit of 2,000 minutes/month.
