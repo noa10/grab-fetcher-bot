@@ -1,19 +1,21 @@
-// Serverless login/logout for the Vercel deployment.
-//
-// GET  /login  -> the login page (same template the self-hosted Express app uses)
-// POST /login  -> JSON {username, password}; sets the signed session cookie
-//
-// The dashboard calls POST /api/auth/login directly, which is why this file is
-// routed both at /login (rewrite) and /api/auth/login (filesystem).
-const database = require('../../src/config/database');
-const User = require('../../src/models/User');
-const logger = require('../../src/utils/logger');
-const getLoginHTML = require('../../src/api/login-template');
-const { issueSession, getSecret } = require('../../src/api/serverless-auth');
+/**
+ * Auth handlers for the serverless deployment, kept out of `api/` on purpose.
+ *
+ * Vercel counts every file under `api/` as a serverless function, and the Hobby
+ * plan caps that per deployment. Three tiny auth files (login, logout, forgot)
+ * were enough to tip the project over the limit and fail the build, so they live
+ * here and `api/auth/[action].js` dispatches to them — one function for all three
+ * routes instead of three.
+ */
+const database = require('../config/database');
+const User = require('../models/User');
+const logger = require('../utils/logger');
+const getLoginHTML = require('./login-template');
+const { issueSession, clearSession, getSecret } = require('./serverless-auth');
 
 // Best-effort throttle. Vercel may run several warm instances, so this is not a
-// guarantee — it raises the cost of a naive credential stuffing run without
-// pretending to be a real rate limiter (that needs a shared store).
+// guarantee — it raises the cost of naive credential stuffing without pretending
+// to be a real rate limiter (that needs a shared store).
 const attempts = new Map();
 const WINDOW_MS = 15 * 60 * 1000;
 const MAX_ATTEMPTS = 5;
@@ -57,7 +59,7 @@ async function ensureAdmin() {
   return true;
 }
 
-module.exports = async (req, res) => {
+async function login(req, res) {
   res.setHeader('Cache-Control', 'no-store');
   res.setHeader('X-Content-Type-Options', 'nosniff');
 
@@ -124,4 +126,37 @@ module.exports = async (req, res) => {
     logger.error('Serverless login failed:', error);
     res.status(500).json({ success: false, message: 'Login failed. Check the deployment logs.' });
   }
-};
+}
+
+async function logout(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST, OPTIONS');
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
+  }
+
+  clearSession(res);
+  res.status(200).json({ success: true, message: 'Logged out' });
+}
+
+async function forgotPassword(req, res) {
+  res.setHeader('Cache-Control', 'no-store');
+
+  if (req.method !== 'POST') {
+    res.setHeader('Allow', 'POST, OPTIONS');
+    res.status(405).json({ success: false, message: 'Method not allowed' });
+    return;
+  }
+
+  // No mail transport and no shared token store on a serverless deployment, so
+  // advertising a reset it cannot deliver would be worse than saying so. The
+  // response is identical for every username, so it cannot enumerate accounts.
+  res.status(501).json({
+    success: false,
+    message: 'Password reset is not available on this deployment. Change ADMIN_PASSWORD in the environment and redeploy.'
+  });
+}
+
+module.exports = { login, logout, forgotPassword };
