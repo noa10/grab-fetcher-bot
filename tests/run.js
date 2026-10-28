@@ -17,6 +17,7 @@ const FILES = [
   './api-session.test.js',
   './serverless-auth.test.js',
   './reviews-api.test.js',
+  './dashboard-template.test.js',
 ];
 
 const GREEN = '\x1b[32m', RED = '\x1b[31m', YELLOW = '\x1b[33m';
