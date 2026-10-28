@@ -125,6 +125,71 @@ class GrabBot {
     return !url.includes('login') && !url.includes('challenge');
   }
 
+  /**
+   * Work out which login screen Grab is showing, and get past the one that has
+   * no fields.
+   *
+   * The persistent profile (added for device-identity continuity) also makes Grab
+   * remember the account: weblogin now redirects to `/merchant/saved-accounts`,
+   * a "Welcome back, <email>! Ready to jump back in?" chooser with zero inputs.
+   * Waiting for `input#Username` there burns 15s and throws a TimeoutError that
+   * reads like a scraper break, which is exactly how the bot sat dead for days.
+   *
+   * Returns 'portal' (session was in fact still valid), 'password' (the chooser
+   * was advanced, or we landed straight on the challenge), 'username' (fresh
+   * profile, normal form) or 'unknown'.
+   */
+  async advanceLoginGate(timeout = 25000) {
+    const deadline = Date.now() + timeout;
+    let clickedContinue = false;
+
+    while (Date.now() < deadline) {
+      let state;
+      try {
+        state = await this.page.evaluate(() => {
+          const visible = (sel) => {
+            const el = document.querySelector(sel);
+            if (!el) return false;
+            const r = el.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+          };
+          const body = document.body ? document.body.innerText : '';
+          return {
+            url: location.href,
+            password: visible('input[type="password"]'),
+            username: visible('input#Username, input[name="username"], input[name="email"], input[type="email"]'),
+            savedAccounts: location.pathname.includes('/saved-accounts') ||
+              /ready to jump back in/i.test(body),
+            onPortal: location.hostname === 'merchant.grab.com' &&
+              !location.pathname.includes('login') &&
+              !!document.querySelector('[data-testid="datePicker"], .sidebar-menu-item-title')
+          };
+        });
+      } catch (e) {
+        // Mid-navigation evaluation can fail; just try again.
+        await sleep(500);
+        continue;
+      }
+
+      if (state.onPortal) return 'portal';
+      if (state.password) return 'password';
+      if (state.username) return 'username';
+
+      if (state.savedAccounts && !clickedContinue) {
+        logger.puppeteer('Saved-account chooser detected — clicking Continue to reach the password step');
+        await this.clickButtonByText('Continue');
+        clickedContinue = true;
+        await sleep(1000);
+        continue;
+      }
+
+      await sleep(500);
+    }
+
+    logger.puppeteer(`Login gate did not settle within ${timeout}ms (url: ${this.page.url()})`);
+    return 'unknown';
+  }
+
   async saveCookies() {
     try {
       const cookies = await this.page.cookies();
@@ -236,20 +301,44 @@ class GrabBot {
 
       logger.puppeteer('Entering username...');
       const usernameSelectorStr = 'input#Username, input[name="username"], input[name="email"], input[type="email"], input[id*="email"], input[id*="username"], input[placeholder*="username"], input[placeholder*="Username"]';
-      await this.page.waitForSelector(usernameSelectorStr, { timeout: 15000 });
 
-      const usernameInput = await this.page.$(usernameSelectorStr);
-      if (!usernameInput) {
-        throw new Error('Could not find username input field');
+      // Which screen appears depends on what the persistent profile remembers.
+      // A profile that has logged in before now gets Grab's saved-account
+      // chooser, which has no inputs at all — that is not an error, it just
+      // needs one click before the password challenge.
+      const entry = await this.advanceLoginGate();
+      logger.puppeteer(`Login gate: ${entry}`);
+
+      if (entry === 'portal') {
+        this.isLoggedIn = true;
+        this.lastActivity = Date.now();
+        logger.puppeteer('Login successful (portal session was still valid)');
+        await this.saveCookies();
+        return true;
       }
 
-      await usernameInput.click();
-      await sleep(500);
-      await usernameInput.type(username, { delay: 100 });
-      await sleep(randomDelay(500, 1000));
+      if (entry === 'username') {
+        const usernameInput = await this.page.$(usernameSelectorStr);
+        if (!usernameInput) {
+          throw new Error('Could not find username input field');
+        }
 
-      logger.puppeteer('Clicking Continue button (step 1)...');
-      await this.clickButtonByText('Continue');
+        await usernameInput.click();
+        await sleep(500);
+        await usernameInput.type(username, { delay: 100 });
+        await sleep(randomDelay(500, 1000));
+
+        logger.puppeteer('Clicking Continue button (step 1)...');
+        await this.clickButtonByText('Continue');
+      } else if (entry !== 'password') {
+        // Name the real state instead of timing out on a selector that will
+        // never appear, so the next failure is diagnosable from the log alone.
+        const url = this.page.url();
+        const snippet = await this.page.evaluate(() =>
+          (document.body ? document.body.innerText : '').replace(/\s+/g, ' ').slice(0, 200)
+        ).catch(() => '');
+        throw new Error(`Login failed - unexpected login page at ${url} (${snippet})`);
+      }
 
       logger.puppeteer('Waiting for password challenge page...');
       // The Grab login page is an SPA: clicking Continue does not trigger a real
