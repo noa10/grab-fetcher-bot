@@ -6,7 +6,11 @@ const assert = require('assert');
 const getDashboardHTML = require('../src/api/dashboard-template');
 
 function inlineScript(html) {
-  const m = html.match(/<script>([\s\S]*)<\/script>/);
+  // Case-insensitive on purpose: CodeQL's js/bad-tag-filter is right that a
+  // bare /<script>/ would miss <SCRIPT>. No attribute wildcard, though — the
+  // page also loads Chart.js via <script src=...>, and matching that would
+  // splice two script bodies together.
+  const m = html.match(/<script>([\s\S]*)<\/script>/i);
   return m ? m[1] : null;
 }
 
