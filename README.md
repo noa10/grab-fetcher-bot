@@ -569,6 +569,38 @@ sudo systemctl start grab-selftest.service   # a throwaway unit that exits 1
 sudo journalctl -u grab-alert@grab-selftest.service -n 20
 ```
 
+#### Daily Heartbeat
+
+Failure alerting only covers a non-zero exit. A run that exits 0 while extracting
+nothing — selector drift, an empty History tab — looks healthy, and that is the
+kind of break you notice days later. The heartbeat closes that gap with one
+Telegram message a day at **22:45 MYT**, after the last poll of the trading
+window:
+
+```
+📊 Mad Krapow — Wed, 28 Oct 2026
+Orders: 6 · RM172.40
+7-day median: 6
+Last poll: 22:30 MYT (success)
+Reviews: 125 total · 10 awaiting reply · newest 26 Oct
+
+✅ normal day
+```
+
+It compares today's count against the shop's own trailing 7-day median, so a
+genuinely quiet day does not page anyone — only a zero or well-below-normal day
+while the median says there should be volume. It also reports the last poll's
+result and the newest stored review, which is what catches a feedback job that
+keeps exiting 0 without writing anything.
+
+```bash
+sudo cp deploy/grab-heartbeat.service deploy/grab-heartbeat.timer /etc/systemd/system/
+sudo systemctl daemon-reload
+sudo systemctl enable --now grab-heartbeat.timer
+
+node scripts/daily-heartbeat.js --dry-run   # print the message, send nothing
+```
+
 ### Cloud Deployment (Legacy — Deprecated)
 
 > The GitHub Actions + Vercel deployment model is deprecated. Running the fetcher on GitHub Actions at 5-minute intervals during operating hours uses ~12,500 minutes/month, which exceeds the free tier limit of 2,000 minutes/month.
