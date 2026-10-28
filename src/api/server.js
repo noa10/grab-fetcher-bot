@@ -10,6 +10,7 @@ const database = require('../config/database');
 const Order = require('../models/Order');
 const ordersRouter = require('./routes/orders');
 const marketingRouter = require('./routes/marketing');
+const feedbackRouter = require('./routes/feedback');
 const { router: authRouter, requireAuth, ensureDefaultAdmin } = require('./routes/auth');
 const getDashboardHTML = require('./dashboard-template');
 
@@ -165,6 +166,8 @@ class ApiServer {
       this.app.use('/api/auth', authRouter);
 
       this.app.use('/api/orders', requireAuth, ordersRouter);
+
+      this.app.use('/api/feedback', requireAuth, feedbackRouter);
 
       this.app.use('/api/marketing', requireAuth, marketingRouter);
 

@@ -703,6 +703,25 @@ pm2 start ecosystem.config.js
 - `GET /api/orders/export/csv` — Export filtered orders as CSV
 - `GET /api/orders/export/json` — Export filtered orders as JSON
 
+### Feedback API (requires authentication)
+
+- `GET /api/feedback` — Fetched customer reviews, newest first
+
+  | Param | Meaning |
+  |---|---|
+  | `page`, `limit` | Pagination; `limit` caps at 100, defaults to 20 |
+  | `rating` | 1–5, exact match |
+  | `replied` | `true` (merchant replied) or `false` (awaiting reply) |
+  | `days` | Rolling window on the review date (1–3650) |
+  | `search` | Case-insensitive match on review text, customer name or order id. Escaped before it reaches Mongo |
+  | `aspect` | Aspect id such as `TASTE` or `PORTION_SIZE` |
+  | `sortBy`, `sortOrder` | `createdAt` (default) or `rating`; `asc`/`desc` |
+
+  The response carries `data`, `pagination`, and a `summary` panel (total, average
+  rating, unreplied count, photo count, 1–5 distribution) computed over the date
+  window only — a distribution that shifts when you filter to five stars would
+  not tell you anything.
+
 ### Dashboard API (requires authentication)
 
 - `GET /api/dashboard/summary` — Get dashboard statistics, charts data, and status breakdown
