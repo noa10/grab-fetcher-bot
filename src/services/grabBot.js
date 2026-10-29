@@ -700,9 +700,20 @@ class GrabBot {
             break;
           }
 
-          const hasOrderTable = await this.page.evaluate(() => {
-            return !!document.querySelector('.dui-table-container, .dui-table-body');
-          });
+          let hasOrderTable = false;
+          try {
+            hasOrderTable = await this.page.evaluate(() => {
+              return !!document.querySelector('.dui-table-container, .dui-table-body');
+            });
+          } catch (e) {
+            // A click-triggered navigation can tear down the execution context
+            // between the URL check above and this evaluate. Not fatal: the
+            // next iteration re-reads the URL and breaks once /order lands.
+            if (!/Execution context was destroyed|Cannot find context/i.test(e.message || '')) {
+              throw e;
+            }
+            logger.puppeteer('Orders navigation still in flight; retrying table check');
+          }
           if (hasOrderTable) {
             logger.puppeteer('Order table found on page');
             break;
