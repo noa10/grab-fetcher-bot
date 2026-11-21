@@ -1245,22 +1245,36 @@ function getDashboardHTML() {
                         <span class="timezone">(MYT GMT+8)</span>
                     </div>
 
+                    <p class="notice-text" id="marketingKpisStatus" role="status"></p>
                     <div class="stats-grid" id="marketingKpis">
-                        <div class="stat-card"><div class="stat-header"><span class="stat-label">Total Customers</span><span class="stat-icon green">&#128101;</span></div><div class="stat-value" id="kpiTotalCustomers">-</div><div class="stat-change" id="kpiTotalCustomersChange"></div></div>
-                        <div class="stat-card"><div class="stat-header"><span class="stat-label">Avg Order Value</span><span class="stat-icon blue">&#36;</span></div><div class="stat-value" id="kpiAvgOrderValue">-</div><div class="stat-change" id="kpiAvgOrderValueChange"></div></div>
-                        <div class="stat-card"><div class="stat-header"><span class="stat-label">Repeat Rate</span><span class="stat-icon purple">&#128260;</span></div><div class="stat-value" id="kpiRepeatRate">-</div><div class="stat-change" id="kpiRepeatRateChange"></div></div>
-                        <div class="stat-card"><div class="stat-header"><span class="stat-label">Champions</span><span class="stat-icon orange">&#127942;</span></div><div class="stat-value" id="kpiChampions">-</div><div class="stat-change" id="kpiChampionsChange"></div></div>
-                        <div class="stat-card"><div class="stat-header"><span class="stat-label">At-Risk</span><span class="stat-icon red">&#9888;</span></div><div class="stat-value" id="kpiAtRisk">-</div><div class="stat-change" id="kpiAtRiskChange"></div></div>
-                        <div class="stat-card"><div class="stat-header"><span class="stat-label">Lost</span><span class="stat-icon cyan">&#128546;</span></div><div class="stat-value" id="kpiLost">-</div><div class="stat-change" id="kpiLostChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label" title="Unique customers identified from order history">Total Customers</span><span class="stat-icon green">&#128101;</span></div><div class="stat-value" id="kpiTotalCustomers">-</div><div class="stat-change" id="kpiTotalCustomersChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label" title="Average order value this month (MYT)">Avg Order Value</span><span class="stat-icon blue">&#36;</span></div><div class="stat-value" id="kpiAvgOrderValue">-</div><div class="stat-change" id="kpiAvgOrderValueChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label" title="Customers with 2 or more orders ÷ total customers">Repeat Rate</span><span class="stat-icon purple">&#128260;</span></div><div class="stat-value" id="kpiRepeatRate">-</div><div class="stat-change" id="kpiRepeatRateChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label" title="Last order within 7 days, at least 5 orders and spending at or above the champion threshold">Champions</span><span class="stat-icon orange">&#127942;</span></div><div class="stat-value" id="kpiChampions">-</div><div class="stat-change" id="kpiChampionsChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label" title="Last order 31–90 days ago">At-Risk</span><span class="stat-icon red">&#9888;</span></div><div class="stat-value" id="kpiAtRisk">-</div><div class="stat-change" id="kpiAtRiskChange"></div></div>
+                        <div class="stat-card"><div class="stat-header"><span class="stat-label" title="Last order more than 90 days ago">Lost</span><span class="stat-icon cyan">&#128546;</span></div><div class="stat-value" id="kpiLost">-</div><div class="stat-change" id="kpiLostChange"></div></div>
                     </div>
 
                     <div class="charts-grid">
                         <div class="chart-card">
-                            <div class="chart-header"><span class="chart-title">RFM Segments</span></div>
+                            <div class="chart-header"><span class="chart-title">Customer segments (RFM)</span></div>
+                            <details class="notice-text"><summary>What do these segments mean?</summary>
+                                <p>Segments use days since the last order, total orders and total spending. The first matching rule applies.</p>
+                                <ul>
+                                    <li>Champions: last order within 7 days, at least 5 orders and spending at or above the configured champion threshold (RM 300 by default).</li>
+                                    <li>Loyal: last order within 14 days and at least 3 orders.</li>
+                                    <li>Potential Loyalist: last order within 30 days and at least 1 order.</li>
+                                    <li>At-Risk: last order 31–90 days ago.</li>
+                                    <li>Lost: last order more than 90 days ago.</li>
+                                    <li>Other: customers who do not match the rules above.</li>
+                                </ul>
+                            </details>
+                            <p class="notice-text" id="marketingRfmStatus" role="status"></p>
                             <div class="chart-body"><div class="chart-container"><canvas id="rfmChart"></canvas></div></div>
                         </div>
                         <div class="chart-card">
                             <div class="chart-header"><span class="chart-title">Retention Cohorts</span></div>
+                            <p class="notice-text" id="marketingCohortsStatus" role="status"></p>
                             <div class="chart-body"><div class="chart-container"><canvas id="cohortChart"></canvas></div></div>
                         </div>
                     </div>
@@ -1274,6 +1288,7 @@ function getDashboardHTML() {
                                     <button class="btn btn-sm btn-secondary" id="exportWinbackJson">JSON</button>
                                 </div>
                             </div>
+                            <p class="notice-text" id="marketingWinbackStatus" role="status"></p>
                             <div class="table-wrapper">
                                 <table class="compact-table">
                                     <thead><tr><th>Name</th><th>Phone</th><th>Segment</th><th class="text-right">Last Order</th><th class="text-right">Total Spent</th></tr></thead>
@@ -1289,6 +1304,7 @@ function getDashboardHTML() {
                                     <button class="btn btn-sm btn-secondary" id="exportVipJson">JSON</button>
                                 </div>
                             </div>
+                            <p class="notice-text" id="marketingVipStatus" role="status"></p>
                             <div class="table-wrapper">
                                 <table class="compact-table">
                                     <thead><tr><th>Name</th><th>Phone</th><th>Segment</th><th class="text-right">Frequency</th><th class="text-right">Total Spent</th></tr></thead>
@@ -1493,11 +1509,17 @@ function getDashboardHTML() {
             }
         }
 
+        let summaryRequest = 0;
+        let ordersRequest = 0;
+
         async function fetchSummary() {
+            const request = ++summaryRequest;
             try {
-                const res = await fetch('/api/dashboard/summary');
+                const res = await fetch('/api/dashboard/summary?view=dashboard');
+                if (request !== summaryRequest || state.currentView !== 'dashboard') return;
                 if (res.status === 401) { window.location.href = '/login'; return; }
                 const data = await res.json();
+                if (request !== summaryRequest || state.currentView !== 'dashboard') return;
                 if (data.success) {
                     state.summary = data.data;
                     updateStats(data.data.summary);
@@ -1506,12 +1528,12 @@ function getDashboardHTML() {
                     updateLastFetched(data.data.lastFetchedAt);
                 }
             } catch (e) {
-                console.error('Error fetching summary:', e);
+                if (request === summaryRequest && state.currentView === 'dashboard') console.error('Error fetching summary:', e);
             }
         }
 
         async function fetchOrders() {
-            if (state.loading) return;
+            const request = ++ordersRequest;
             state.loading = true;
             document.getElementById('refreshBtn').classList.add('loading');
 
@@ -1520,7 +1542,8 @@ function getDashboardHTML() {
                     page: state.pagination.currentPage,
                     limit: state.pagination.limit,
                     sortBy: state.sortBy,
-                    sortOrder: state.sortOrder
+                    sortOrder: state.sortOrder,
+                    view: 'dashboard'
                 });
 
                 if (state.filters.search) params.set('search', state.filters.search);
@@ -1530,8 +1553,10 @@ function getDashboardHTML() {
                 if (state.filters.dateTo) params.set('endDate', state.filters.dateTo);
 
                 const res = await fetch(\`/api/orders?\${params.toString()}\`);
+                if (request !== ordersRequest || state.currentView !== 'orders') return;
                 if (res.status === 401) { window.location.href = '/login'; return; }
                 const data = await res.json();
+                if (request !== ordersRequest || state.currentView !== 'orders') return;
 
                 if (data.success) {
                     state.orders = data.data;
@@ -1543,11 +1568,15 @@ function getDashboardHTML() {
                     updatePagination();
                 }
             } catch (e) {
-                console.error('Error fetching orders:', e);
-                showToast('Failed to load orders');
+                if (request === ordersRequest && state.currentView === 'orders') {
+                    console.error('Error fetching orders:', e);
+                    showToast('Failed to load orders');
+                }
             } finally {
-                state.loading = false;
-                document.getElementById('refreshBtn').classList.remove('loading');
+                if (request === ordersRequest) {
+                    state.loading = false;
+                    document.getElementById('refreshBtn').classList.remove('loading');
+                }
             }
         }
 
@@ -1997,6 +2026,8 @@ function getDashboardHTML() {
 
         // ---------- Reviews ----------
         const reviewState = { page: 1, limit: 20, rating: '', replied: '', days: '', search: '', loading: false };
+        let reviewsRequest = 0;
+        let reviewsController = null;
 
         function reviewEscape(text) {
             if (text === null || text === undefined) return '';
@@ -2037,8 +2068,12 @@ function getDashboardHTML() {
             if (img) img.src = '';
         }
 
-        async function fetchReviews() {
-            if (reviewState.loading) return;
+        async function fetchReviews(options) {
+            const request = ++reviewsRequest;
+            const includeSummary = !options || options.includeSummary !== false;
+            if (reviewsController) reviewsController.abort();
+            const controller = new AbortController();
+            reviewsController = controller;
             reviewState.loading = true;
             const list = document.getElementById('reviewList');
             if (list) list.innerHTML = '<div class="review-empty">Loading reviews...</div>';
@@ -2051,21 +2086,31 @@ function getDashboardHTML() {
                 if (reviewState.replied) params.set('replied', reviewState.replied);
                 if (reviewState.days) params.set('days', reviewState.days);
                 if (reviewState.search) params.set('search', reviewState.search);
+                if (!includeSummary) params.set('includeSummary', '0');
 
-                const res = await fetch('/api/feedback?' + params.toString());
+                const res = await fetch('/api/feedback?' + params.toString(), { signal: controller.signal });
+                if (request !== reviewsRequest || state.currentView !== 'reviews') return;
                 if (res.status === 401) { window.location.href = '/login'; return; }
                 const body = await res.json();
+                if (request !== reviewsRequest || state.currentView !== 'reviews') return;
                 if (!body.success) throw new Error(body.message || 'Failed to load reviews');
 
-                renderReviewSummary(body.summary);
-                const stale = document.getElementById('lastUpdate');
-                if (stale && body.summary) stale.textContent = body.summary.total + ' reviews stored';
+                if (body.summary) {
+                    renderReviewSummary(body.summary);
+                    const stale = document.getElementById('lastUpdate');
+                    if (stale) stale.textContent = body.summary.total + ' reviews stored';
+                }
                 renderReviewList(body.data);
                 renderReviewPagination(body.pagination);
             } catch (err) {
-                if (list) list.innerHTML = '<div class="review-error">Could not load reviews: ' + reviewEscape(err.message) + '</div>';
+                if (request === reviewsRequest && state.currentView === 'reviews' && list) {
+                    list.innerHTML = '<div class="review-error">Could not load reviews: ' + reviewEscape(err.message) + '</div>';
+                }
             } finally {
-                reviewState.loading = false;
+                if (request === reviewsRequest) {
+                    reviewState.loading = false;
+                    reviewsController = null;
+                }
             }
         }
 
@@ -2086,7 +2131,7 @@ function getDashboardHTML() {
 
             el.innerHTML =
                 card('Reviews', summary.total, summary.withPhotos + ' with photos') +
-                card('Average rating', summary.average === null ? '-' : summary.average.toFixed(1), 'out of 5') +
+                card('Average rating', summary.average == null ? '-' : summary.average.toFixed(1), 'out of 5') +
                 card('Awaiting reply', summary.unreplied, 'no merchant reply yet') +
                 card('5-star share', summary.total ? Math.round((five / summary.total) * 100) + '%' : '-', five + ' of ' + summary.total);
         }
@@ -2179,12 +2224,12 @@ function getDashboardHTML() {
             document.getElementById('reviewPrev').addEventListener('click', function () {
                 if (!p.hasPrevPage) return;
                 reviewState.page = p.currentPage - 1;
-                fetchReviews();
+                fetchReviews({ includeSummary: false });
             });
             document.getElementById('reviewNext').addEventListener('click', function () {
                 if (!p.hasNextPage) return;
                 reviewState.page = p.currentPage + 1;
-                fetchReviews();
+                fetchReviews({ includeSummary: false });
             });
         }
 
@@ -2215,6 +2260,17 @@ function getDashboardHTML() {
         }
 
         function switchView(view) {
+            if (view !== state.currentView) {
+                summaryRequest++;
+                ordersRequest++;
+                reviewsRequest++;
+                marketingRequestId++;
+                if (reviewsController) reviewsController.abort();
+                reviewsController = null;
+                state.loading = false;
+                reviewState.loading = false;
+                document.getElementById('refreshBtn').classList.remove('loading');
+            }
             if (window.rfmChartInstance) { window.rfmChartInstance.destroy(); window.rfmChartInstance = null; }
             if (window.cohortChartInstance) { window.cohortChartInstance.destroy(); window.cohortChartInstance = null; }
 
@@ -2261,51 +2317,58 @@ function getDashboardHTML() {
             };
         }
 
+        let marketingRequestId = 0;
         async function fetchMarketingData() {
-            try {
-                const [kpisRes, rfmRes, cohortsRes, winbackRes, vipRes] = await Promise.all([
-                    fetch('/api/marketing/kpis'), fetch('/api/marketing/rfm'),
-                    fetch('/api/marketing/cohorts'), fetch('/api/marketing/customers/winback'),
-                    fetch('/api/marketing/customers/vip'),
-                ]);
-                if (!kpisRes.ok || !rfmRes.ok || !cohortsRes.ok) throw new Error('Marketing API error');
-
-                const kpis = await kpisRes.json();
-                const rfm = await rfmRes.json();
-                const cohorts = await cohortsRes.json();
-                const winback = winbackRes.ok ? await winbackRes.json() : { data: [] };
-                const vip = vipRes.ok ? await vipRes.json() : { data: [] };
-
-                if (kpis.success) {
-                    const d = kpis.data;
+            const requestId = ++marketingRequestId;
+            const load = async (url, statusId, render) => {
+                const status = document.getElementById(statusId);
+                status.textContent = 'Loading...';
+                try {
+                    const response = await fetch(url);
+                    if (!response.ok) throw new Error('Marketing API error');
+                    const result = await response.json();
+                    if (requestId !== marketingRequestId) return;
+                    if (!result.success) throw new Error('Marketing API error');
+                    render(result.data);
+                    status.textContent = '';
+                } catch (e) {
+                    if (requestId !== marketingRequestId) return;
+                    status.textContent = 'Unable to load. Displayed data may be out of date.';
+                    console.error('Marketing fetch error:', e);
+                }
+            };
+            await Promise.all([
+                load('/api/marketing/kpis', 'marketingKpisStatus', d => {
                     document.getElementById('kpiTotalCustomers').textContent = d.totalCustomers.toLocaleString();
                     document.getElementById('kpiAvgOrderValue').textContent = 'RM ' + (d.avgOrderValue || 0).toFixed(2);
                     document.getElementById('kpiRepeatRate').textContent = (d.repeatRate || 0).toFixed(1) + '%';
                     document.getElementById('kpiChampions').textContent = (d.championCount || 0).toLocaleString();
                     document.getElementById('kpiAtRisk').textContent = (d.atRiskCount || 0).toLocaleString();
                     document.getElementById('kpiLost').textContent = (d.lostCount || 0).toLocaleString();
-                }
-
-                if (rfm.success && typeof Chart !== 'undefined') {
+                }),
+                load('/api/marketing/rfm', 'marketingRfmStatus', data => {
+                    if (typeof Chart === 'undefined') return;
                     const colors = getChartColors();
-                    const segData = rfm.data.segments || [];
+                    const segData = data.segments || [];
                     const labels = segData.map(s => s.segment);
                     const counts = segData.map(s => s.count);
+                    if (window.rfmChartInstance) window.rfmChartInstance.destroy();
                     window.rfmChartInstance = new Chart(document.getElementById('rfmChart'), {
                         type: 'doughnut',
                         data: { labels, datasets: [{ data: counts, backgroundColor: colors.segments.slice(0, labels.length) }] },
                         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom', labels: { color: colors.text } } } }
                     });
-                }
-
-                if (cohorts.success && typeof Chart !== 'undefined') {
+                }),
+                load('/api/marketing/cohorts', 'marketingCohortsStatus', data => {
+                    if (typeof Chart === 'undefined') return;
                     const colors = getChartColors();
-                    const cohortData = cohorts.data.cohorts || [];
+                    const cohortData = data.cohorts || [];
                     const labels = cohortData.map(c => c.cohortMonth);
                     const retentionRates = cohortData.map(c => {
                         const months = Object.keys(c.retention || {}).sort();
                         return months.length > 1 ? c.retention[months[1]] || 0 : 100;
                     });
+                    if (window.cohortChartInstance) window.cohortChartInstance.destroy();
                     window.cohortChartInstance = new Chart(document.getElementById('cohortChart'), {
                         type: 'line',
                         data: {
@@ -2318,13 +2381,10 @@ function getDashboardHTML() {
                             plugins: { legend: { labels: { color: colors.text } } }
                         }
                     });
-                }
-
-                renderCustomerTable('winbackTableBody', winback.data?.customers || [], 'monetary');
-                renderCustomerTable('vipTableBody', vip.data?.customers || [], 'frequency');
-            } catch (e) {
-                console.error('Marketing fetch error:', e);
-            }
+                }),
+                load('/api/marketing/customers/winback', 'marketingWinbackStatus', data => renderCustomerTable('winbackTableBody', data?.customers || [], 'monetary')),
+                load('/api/marketing/customers/vip', 'marketingVipStatus', data => renderCustomerTable('vipTableBody', data?.customers || [], 'frequency'))
+            ]);
         }
 
         function escapeHtml(str) {
@@ -2429,6 +2489,8 @@ function getDashboardHTML() {
                     fetchMarketingData();
                 } else if (state.currentView === 'orders') {
                     fetchOrders();
+                } else if (state.currentView === 'reviews') {
+                    fetchReviews();
                 }
             });
             document.getElementById('logoutBtn').addEventListener('click', logout);

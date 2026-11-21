@@ -1,6 +1,7 @@
 // Vercel serverless function for health check
 const database = require('../src/config/database');
 const getHealthHTML = require('../src/api/health-template');
+const { sanitizeDatabaseHealth } = require('../src/api/health-utils');
 
 module.exports = async (req, res) => {
   res.setHeader('Cache-Control', 'no-store');
@@ -22,9 +23,11 @@ module.exports = async (req, res) => {
     const dbHealth = await database.healthCheck();
     
     const health = {
-      status: 'ok',
+      status: dbHealth.status === 'connected' ? 'ok' : 'error',
       timestamp: new Date().toISOString(),
-      database: dbHealth,
+      database: sanitizeDatabaseHealth(dbHealth),
+      uptime: process.uptime(),
+      memory: process.memoryUsage(),
       version: process.env.npm_package_version || '1.0.0',
       deployment: 'vercel-serverless'
     };
@@ -37,13 +40,14 @@ module.exports = async (req, res) => {
     res.status(200).json(health);
   } catch (error) {
     console.error('Health check failed:', error);
+    const message = 'Health check failed';
     if (acceptsHtml) {
       res.setHeader('Content-Type', 'text/html');
-      return res.status(500).send(getHealthHTML({ error: error.message }));
+      return res.status(500).send(getHealthHTML({ error: message }));
     }
     res.status(500).json({
       status: 'error',
-      message: error.message,
+      message,
       timestamp: new Date().toISOString()
     });
   }

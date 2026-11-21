@@ -3,6 +3,7 @@ const Order = require('../src/models/Order');
 const Customer = require('../src/models/Customer');
 const MarketingCache = require('../src/models/MarketingCache');
 const { sanitizeCsvField } = require('../src/utils/inputSanitizer');
+const { getMalaysiaDateString, mytDayStart } = require('../src/utils/helpers');
 const { requireAuth } = require('../src/api/serverless-auth');
 
 const rebuildMutex = { promise: null };
@@ -11,14 +12,35 @@ function checkMarketingEnabled() {
   return process.env.ENABLE_MARKETING_ANALYTICS === 'true';
 }
 
-async function getCachedOrCompute(cacheKey, computeFn) {
+async function rebuildCustomers() {
+  if (!rebuildMutex.promise) {
+    rebuildMutex.promise = Customer.buildCustomerCollection()
+      .then(() => MarketingCache.findOneAndUpdate(
+        { cacheKey: 'marketing:customers:snapshot' },
+        { expiresAt: new Date(Date.now() + 15 * 60 * 1000) },
+        { upsert: true }
+      ))
+      .finally(() => { rebuildMutex.promise = null; });
+  }
+  return rebuildMutex.promise;
+}
+
+// Customer reads must not run while a rebuild is in flight, otherwise a cold or
+// expired cache can return a partial snapshot. Reuse the same 15-minute window
+// as the computed caches.
+async function ensureCustomerSnapshot() {
+  const snapshot = await MarketingCache.findOne({
+    cacheKey: 'marketing:customers:snapshot',
+    expiresAt: { $gt: new Date() }
+  });
+  if (!snapshot) await rebuildCustomers();
+}
+
+async function getCachedOrCompute(cacheKey, computeFn, refreshCustomers = true) {
   const cached = await MarketingCache.findOne({ cacheKey, expiresAt: { $gt: new Date() } });
   if (cached) return cached.data;
 
-  if (!rebuildMutex.promise) {
-    rebuildMutex.promise = Customer.buildCustomerCollection().finally(() => { rebuildMutex.promise = null; });
-  }
-  await rebuildMutex.promise;
+  if (refreshCustomers) await rebuildCustomers();
 
   const data = await computeFn();
   await MarketingCache.findOneAndUpdate(
@@ -48,9 +70,9 @@ async function withDatabase(handler) {
 // Route handlers
 const handlers = {
   async kpis(req, res) {
-    const malaysiaTime = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
-    const todayMYT = new Date(malaysiaTime);
-    const monthStartMYT = new Date(todayMYT.getFullYear(), todayMYT.getMonth(), 1);
+    // MYT midnight on the 1st, independent of the host timezone (Vercel is UTC).
+    const todayStr = getMalaysiaDateString();
+    const monthStartMYT = mytDayStart(`${todayStr.slice(0, 8)}01`);
 
     const data = await getCachedOrCompute('marketing:kpis', async () => {
       const [kpiResult, activeCustomersResult, repeatRateResult, clvResult, segmentResult] = await Promise.all([
@@ -185,12 +207,13 @@ const handlers = {
       });
 
       return { cohorts };
-    });
+    }, false);
 
     res.json({ success: true, data });
   },
 
   async customersWinback(req, res) {
+    await ensureCustomerSnapshot();
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const skip = (page - 1) * limit;
@@ -205,6 +228,7 @@ const handlers = {
   },
 
   async customersVip(req, res) {
+    await ensureCustomerSnapshot();
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
     const skip = (page - 1) * limit;
@@ -227,6 +251,7 @@ const handlers = {
   },
 
   async exportWinbackCsv(req, res) {
+    await ensureCustomerSnapshot();
     const customers = await Customer.find({ recencyDays: { $gte: 45, $lte: 90 }, monetary: { $gt: 100 } })
       .sort({ monetary: -1 }).limit(5000).lean();
 
@@ -245,6 +270,7 @@ const handlers = {
   },
 
   async exportWinbackJson(req, res) {
+    await ensureCustomerSnapshot();
     const customers = await Customer.find({ recencyDays: { $gte: 45, $lte: 90 }, monetary: { $gt: 100 } })
       .sort({ monetary: -1 }).limit(5000).lean();
 
@@ -258,6 +284,7 @@ const handlers = {
   },
 
   async exportVipCsv(req, res) {
+    await ensureCustomerSnapshot();
     const count = await Customer.countDocuments();
     let threshold = 0;
     if (count >= 10) {
@@ -283,6 +310,7 @@ const handlers = {
   },
 
   async exportVipJson(req, res) {
+    await ensureCustomerSnapshot();
     const count = await Customer.countDocuments();
     let threshold = 0;
     if (count >= 10) {

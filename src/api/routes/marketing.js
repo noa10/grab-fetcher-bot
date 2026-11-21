@@ -5,6 +5,7 @@ const Order = require('../../models/Order');
 const Customer = require('../../models/Customer');
 const MarketingCache = require('../../models/MarketingCache');
 const { sanitizeCsvField } = require('../../utils/inputSanitizer');
+const { getMalaysiaDateString, mytDayStart } = require('../../utils/helpers');
 const logger = require('../../utils/logger');
 
 const apiLimiter = rateLimit({
@@ -29,14 +30,35 @@ const exportLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-async function getCachedOrCompute(cacheKey, computeFn) {
+async function rebuildCustomers() {
+  if (!rebuildMutex.promise) {
+    rebuildMutex.promise = Customer.buildCustomerCollection()
+      .then(() => MarketingCache.findOneAndUpdate(
+        { cacheKey: 'marketing:customers:snapshot' },
+        { expiresAt: new Date(Date.now() + 15 * 60 * 1000) },
+        { upsert: true }
+      ))
+      .finally(() => { rebuildMutex.promise = null; });
+  }
+  return rebuildMutex.promise;
+}
+
+// Customer reads must not run while a rebuild is in flight, otherwise a cold or
+// expired cache can return a partial snapshot. Reuse the same 15-minute window
+// as the computed caches.
+async function ensureCustomerSnapshot() {
+  const snapshot = await MarketingCache.findOne({
+    cacheKey: 'marketing:customers:snapshot',
+    expiresAt: { $gt: new Date() }
+  });
+  if (!snapshot) await rebuildCustomers();
+}
+
+async function getCachedOrCompute(cacheKey, computeFn, refreshCustomers = true) {
   const cached = await MarketingCache.findOne({ cacheKey, expiresAt: { $gt: new Date() } });
   if (cached) return cached.data;
 
-  if (!rebuildMutex.promise) {
-    rebuildMutex.promise = Customer.buildCustomerCollection().finally(() => { rebuildMutex.promise = null; });
-  }
-  await rebuildMutex.promise;
+  if (refreshCustomers) await rebuildCustomers();
 
   const data = await computeFn();
   await MarketingCache.findOneAndUpdate(
@@ -60,9 +82,9 @@ router.get('/kpis', async (req, res) => {
     const disabled = checkMarketingEnabled(req, res);
     if (disabled) return;
 
-    const malaysiaTime = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
-    const todayMYT = new Date(malaysiaTime);
-    const monthStartMYT = new Date(todayMYT.getFullYear(), todayMYT.getMonth(), 1);
+    // MYT midnight on the 1st, independent of the host timezone (Vercel is UTC).
+    const todayStr = getMalaysiaDateString();
+    const monthStartMYT = mytDayStart(`${todayStr.slice(0, 8)}01`);
 
     const data = await getCachedOrCompute('marketing:kpis', async () => {
       const [kpiResult, activeCustomersResult, repeatRateResult, clvResult, segmentResult] = await Promise.all([
@@ -235,7 +257,7 @@ router.get('/cohorts', async (req, res) => {
       });
 
       return { cohorts };
-    });
+    }, false);
 
     res.json({ success: true, data });
   } catch (error) {
@@ -249,6 +271,8 @@ router.get('/customers/winback', async (req, res) => {
   try {
     const disabled = checkMarketingEnabled(req, res);
     if (disabled) return;
+
+    await ensureCustomerSnapshot();
 
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
@@ -285,6 +309,8 @@ router.get('/customers/vip', async (req, res) => {
   try {
     const disabled = checkMarketingEnabled(req, res);
     if (disabled) return;
+
+    await ensureCustomerSnapshot();
 
     const page = parseInt(req.query.page) || 1;
     const limit = Math.min(parseInt(req.query.limit) || 20, 100);
@@ -336,6 +362,8 @@ router.get('/export/winback/csv', exportLimiter, async (req, res) => {
     const disabled = checkMarketingEnabled(req, res);
     if (disabled) return;
 
+    await ensureCustomerSnapshot();
+
     const customers = await Customer.find({
       recencyDays: { $gte: 45, $lte: 90 },
       monetary: { $gt: 100 }
@@ -380,6 +408,8 @@ router.get('/export/winback/json', exportLimiter, async (req, res) => {
     const disabled = checkMarketingEnabled(req, res);
     if (disabled) return;
 
+    await ensureCustomerSnapshot();
+
     const customers = await Customer.find({
       recencyDays: { $gte: 45, $lte: 90 },
       monetary: { $gt: 100 }
@@ -416,6 +446,8 @@ router.get('/export/vip/csv', exportLimiter, async (req, res) => {
   try {
     const disabled = checkMarketingEnabled(req, res);
     if (disabled) return;
+
+    await ensureCustomerSnapshot();
 
     const count = await Customer.countDocuments();
     let threshold = 0;
@@ -468,6 +500,8 @@ router.get('/export/vip/json', exportLimiter, async (req, res) => {
   try {
     const disabled = checkMarketingEnabled(req, res);
     if (disabled) return;
+
+    await ensureCustomerSnapshot();
 
     const count = await Customer.countDocuments();
     let threshold = 0;
