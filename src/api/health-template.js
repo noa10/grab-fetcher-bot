@@ -1,3 +1,9 @@
+function escapeHtml(value) {
+  return String(value).replace(/[&<>"']/g, ch => ({
+    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+  }[ch]));
+}
+
 function getHealthHTML(errorData) {
   const hasError = errorData && errorData.error;
   return `<!DOCTYPE html>
@@ -389,7 +395,7 @@ function getHealthHTML(errorData) {
 
             <div class="content-area">
                 <div id="errorBanner" class="error-banner" style="display:${hasError ? 'block' : 'none'}">
-                    ⚠️ Error: ${hasError ? errorData.error : ''}
+                    ⚠️ Error: ${hasError ? escapeHtml(errorData.error) : ''}
                 </div>
 
                 <div class="overall-status" id="overallStatus">
@@ -522,19 +528,32 @@ function getHealthHTML(errorData) {
             return mins + 'm';
         }
 
+        function updateMetrics(data) {
+            const valid = value => typeof value === 'number' && Number.isFinite(value) && value >= 0;
+            document.getElementById('uptimeValue').textContent = valid(data.uptime) ? formatUptime(data.uptime) : '-';
+            const memory = data.memory || {};
+            for (const [id, field] of [['memRss', 'rss'], ['memHeapTotal', 'heapTotal'], ['memHeapUsed', 'heapUsed'], ['memExternal', 'external']]) {
+                document.getElementById(id).textContent = valid(memory[field]) ? formatBytes(memory[field]) : '-';
+            }
+        }
+
+        let healthRequest = 0;
         async function fetchHealth() {
+            const request = ++healthRequest;
             try {
                 const res = await fetch('/health', { headers: { 'Accept': 'application/json' } });
                 const data = await res.json();
+                if (request !== healthRequest) return;
 
                 const isOk = data.status === 'ok';
+                if (isOk) document.getElementById('errorBanner').style.display = 'none';
                 document.getElementById('overallText').textContent = isOk ? 'All Systems Operational' : 'System Error';
                 document.getElementById('overallBadge').textContent = isOk ? 'HEALTHY' : 'ERROR';
                 document.getElementById('overallBadge').className = 'status-badge ' + (isOk ? 'ok' : 'error');
                 document.querySelector('.status-indicator').className = 'status-indicator ' + (isOk ? 'ok' : 'error');
                 document.getElementById('overallTime').textContent = 'Last checked: ' + new Date().toLocaleString('en-MY', { timeZone: 'Asia/Kuala_Lumpur' }) + ' MYT';
 
-                if (data.uptime) document.getElementById('uptimeValue').textContent = formatUptime(data.uptime);
+                updateMetrics(data);
                 if (data.version) document.getElementById('versionValue').textContent = data.version;
 
                 if (data.database) {
@@ -542,20 +561,28 @@ function getHealthHTML(errorData) {
                     document.getElementById('dbStatus').className = 'card-status ' + (dbOk ? 'ok' : 'error');
                     document.getElementById('dbText').textContent = dbOk ? 'Connected' : (data.database.status || 'Unknown');
                     document.getElementById('dbDetail').textContent = data.database.message || '';
+                } else {
+                    document.getElementById('dbStatus').className = 'card-status error';
+                    document.getElementById('dbText').textContent = 'Unknown';
+                    document.getElementById('dbDetail').textContent = 'No database status in response';
                 }
 
-                if (data.memory) {
-                    document.getElementById('memRss').textContent = formatBytes(data.memory.rss);
-                    document.getElementById('memHeapTotal').textContent = formatBytes(data.memory.heapTotal);
-                    document.getElementById('memHeapUsed').textContent = formatBytes(data.memory.heapUsed);
-                    document.getElementById('memExternal').textContent = formatBytes(data.memory.external);
-                }
             } catch (e) {
+                if (request !== healthRequest) return;
+                updateMetrics({});
+                document.getElementById('overallText').textContent = 'Status unavailable';
+                document.getElementById('overallBadge').textContent = 'UNKNOWN';
+                document.getElementById('overallBadge').className = 'status-badge error';
+                document.querySelector('.status-indicator').className = 'status-indicator error';
+                document.getElementById('dbStatus').className = 'card-status error';
+                document.getElementById('dbText').textContent = 'Unknown';
+                document.getElementById('dbDetail').textContent = 'Health check failed';
                 console.error('Health fetch error:', e);
             }
         }
 
         document.getElementById('refreshBtn').addEventListener('click', fetchHealth);
+        fetchHealth();
         setInterval(fetchHealth, 30000);
     </script>
 </body>
