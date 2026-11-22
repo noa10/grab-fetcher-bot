@@ -20,7 +20,8 @@ const apiLimiter = rateLimit({
 
 router.use(apiLimiter);
 
-const rebuildMutex = { promise: null };
+const { rebuildCustomers, ensureCustomerSnapshot } =
+  require('../customer-snapshot')(Customer, MarketingCache);
 
 const exportLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
@@ -29,30 +30,6 @@ const exportLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-
-async function rebuildCustomers() {
-  if (!rebuildMutex.promise) {
-    rebuildMutex.promise = Customer.buildCustomerCollection()
-      .then(() => MarketingCache.findOneAndUpdate(
-        { cacheKey: 'marketing:customers:snapshot' },
-        { expiresAt: new Date(Date.now() + 15 * 60 * 1000) },
-        { upsert: true }
-      ))
-      .finally(() => { rebuildMutex.promise = null; });
-  }
-  return rebuildMutex.promise;
-}
-
-// Customer reads must not run while a rebuild is in flight, otherwise a cold or
-// expired cache can return a partial snapshot. Reuse the same 15-minute window
-// as the computed caches.
-async function ensureCustomerSnapshot() {
-  const snapshot = await MarketingCache.findOne({
-    cacheKey: 'marketing:customers:snapshot',
-    expiresAt: { $gt: new Date() }
-  });
-  if (!snapshot) await rebuildCustomers();
-}
 
 async function getCachedOrCompute(cacheKey, computeFn, refreshCustomers = true) {
   const cached = await MarketingCache.findOne({ cacheKey, expiresAt: { $gt: new Date() } });

@@ -53,6 +53,7 @@ function assertMetrics(body) {
   assert.deepStrictEqual(body.database, dbHealth);
   assert.strictEqual(typeof body.uptime, 'number');
   assert.ok(body.uptime >= 0);
+  assert.deepStrictEqual(Object.keys(body.memory).sort(), ['external', 'heapTotal', 'heapUsed', 'rss']);
   for (const field of ['rss', 'heapTotal', 'heapUsed', 'external']) {
     assert.strictEqual(typeof body.memory[field], 'number', field);
     assert.ok(body.memory[field] >= 0, field);
@@ -107,6 +108,7 @@ module.exports = {
             status: 'error', message: 'Database health check failed'
           });
           assert.strictEqual(serverless.body.status, 'error');
+          assert.strictEqual(serverless.statusCode, 503);
 
           process.env.SESSION_SECRET = 'local-test-secret';
           const ApiServer = loadWithMocks('../src/api/server');
@@ -119,6 +121,20 @@ module.exports = {
             status: 'error', message: 'Database health check failed'
           });
           assert.strictEqual(standalone.body.status, 'error');
+          assert.strictEqual(standalone.statusCode, 503);
+          dbHealth = { status: 'disconnected', message: 'disconnected' };
+          for (const [invoke, html] of [
+            [res => handler({ method: 'GET', headers: { accept: 'application/json' } }, res), false],
+            [res => handler({ method: 'GET', headers: { accept: 'text/html' } }, res), true],
+            [res => route.route.stack[0].handle({ accepts: () => false }, res), false],
+            [res => route.route.stack[0].handle({ accepts: () => true }, res), true]
+          ]) {
+            const res = response();
+            await invoke(res);
+            assert.strictEqual(res.statusCode, 503);
+            if (html) assert.ok(res.body.includes('<html'));
+            else assert.strictEqual(res.body.database.status, 'disconnected');
+          }
         } finally {
           dbHealth = original;
           if (oldSecret === undefined) delete process.env.SESSION_SECRET;
@@ -254,6 +270,11 @@ module.exports = {
         assert.strictEqual(element('uptimeValue').textContent, '2m');
         assert.strictEqual(element('memRss').textContent, '2.0 KB');
         assert.strictEqual(element('memHeapTotal').textContent, '-');
+
+        nextResponse = { ok: false, status: 503, json: async () => ({ status: 'error', database: { status: 'disconnected', message: 'Database health check failed' } }) };
+        await interval.fn();
+        assert.strictEqual(element('overallText').textContent, 'System Error');
+        assert.strictEqual(element('dbText').textContent, 'disconnected');
 
         nextResponse = Promise.reject(new Error('offline'));
         await interval.fn();

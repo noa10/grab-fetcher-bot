@@ -8,4 +8,9 @@ function sanitizeDatabaseHealth(health) {
   };
 }
 
-module.exports = { sanitizeDatabaseHealth };
+function getMemoryUsage() {
+  const { rss, heapTotal, heapUsed, external } = process.memoryUsage();
+  return { rss, heapTotal, heapUsed, external };
+}
+
+module.exports = { sanitizeDatabaseHealth, getMemoryUsage };

@@ -13,7 +13,8 @@ const marketingRouter = require('./routes/marketing');
 const feedbackRouter = require('./routes/feedback');
 const { router: authRouter, requireAuth, ensureDefaultAdmin } = require('./routes/auth');
 const getDashboardHTML = require('./dashboard-template');
-const { sanitizeDatabaseHealth } = require('./health-utils');
+const { sanitizeDatabaseHealth, getMemoryUsage } = require('./health-utils');
+const { getMalaysiaDateString, mytDayStart } = require('../utils/helpers');
 
 const validateSessionSecret = () => {
   const secret = process.env.SESSION_SECRET;
@@ -119,10 +120,11 @@ class ApiServer {
         try {
           const dbHealth = await database.healthCheck();
           const acceptsHtml = req.accepts('html');
-          
+          const statusCode = dbHealth.status === 'connected' ? 200 : 503;
+
           if (acceptsHtml) {
             const getHealthHTML = require('./health-template');
-            return res.send(getHealthHTML());
+            return res.status(statusCode).send(getHealthHTML());
           }
 
           const health = {
@@ -130,10 +132,10 @@ class ApiServer {
             timestamp: new Date().toISOString(),
             database: sanitizeDatabaseHealth(dbHealth),
             uptime: process.uptime(),
-            memory: process.memoryUsage(),
+            memory: getMemoryUsage(),
             version: process.env.npm_package_version || '1.0.0'
           };
-          res.json(health);
+          res.status(statusCode).json(health);
         } catch (error) {
           logger.error('Health check failed:', error);
           const acceptsHtml = req.accepts('html');
@@ -179,14 +181,12 @@ class ApiServer {
       this.app.get('/api/dashboard/summary', requireAuth, async (req, res) => {
         try {
           const dashboardView = req.query.view === 'dashboard';
-          const malaysiaTime = new Date().toLocaleString('en-US', { timeZone: 'Asia/Kuala_Lumpur' });
-          const todayMYT = new Date(malaysiaTime);
-          todayMYT.setHours(0, 0, 0, 0);
-          const tomorrowMYT = new Date(todayMYT);
-          tomorrowMYT.setDate(todayMYT.getDate() + 1);
-          const weekStartMYT = new Date(todayMYT);
-          weekStartMYT.setDate(todayMYT.getDate() - todayMYT.getDay());
-          const monthStartMYT = new Date(todayMYT.getFullYear(), todayMYT.getMonth(), 1);
+          const todayStr = getMalaysiaDateString();
+          const todayMYT = mytDayStart(todayStr);
+          const tomorrowMYT = new Date(todayMYT.getTime() + 24 * 60 * 60 * 1000);
+          const mytWeekday = new Date(`${todayStr}T00:00:00Z`).getUTCDay();
+          const weekStartMYT = new Date(todayMYT.getTime() - mytWeekday * 24 * 60 * 60 * 1000);
+          const monthStartMYT = mytDayStart(`${todayStr.slice(0, 8)}01`);
 
           const [
             totalStats, todayStats, weekStats, monthStats,

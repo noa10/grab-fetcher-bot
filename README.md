@@ -728,8 +728,10 @@ pm2 start ecosystem.config.js
 
 ### System API (public)
 
-- `GET /health` — Health check (returns HTML UI or JSON based on Accept header)
+- `GET /health` — Health check (returns HTML UI or JSON based on Accept header). Returns 200 when the database is connected, 503 when it reports disconnected or unhealthy, and 500 if the check throws. JSON process metrics describe the serving process.
 - `GET /dashboard` — Web dashboard (requires authentication)
+
+Customer segment and export reads use existing customer data immediately when it is available. The first read on an empty installation builds the customer collection before returning. KPI and RFM cache misses also rebuild it; customer reads can therefore be stale if those requests have not refreshed it. Rebuilds update rows in place, so concurrent requests or a failed rebuild can expose a mixture of old and new rows. The rebuild lock is local to one process and does not coordinate separate instances.
 
 ### Filtering Orders
 
@@ -918,7 +920,7 @@ Log files are also written to `logs/`:
 
 ```bash
 # Check system health
-curl http://localhost:63173/health
+curl -H 'Accept: application/json' http://localhost:63173/health
 
 # Check order statistics
 curl http://localhost:63173/api/orders/stats
