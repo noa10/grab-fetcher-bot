@@ -18,6 +18,12 @@ const FILES = [
   './serverless-auth.test.js',
   './reviews-api.test.js',
   './dashboard-template.test.js',
+  './dashboard-ui-races.test.js',
+  './health.test.js',
+  './dashboard-summary-projection.test.js',
+  './orders-dashboard-view.test.js',
+  './reviews-summary-optout.test.js',
+  './marketing.test.js',
 ];
 
 const GREEN = '\x1b[32m', RED = '\x1b[31m', YELLOW = '\x1b[33m';

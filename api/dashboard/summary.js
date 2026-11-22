@@ -21,6 +21,7 @@ module.exports = async (req, res) => {
   try {
     await database.connect();
 
+    const dashboardView = req.query?.view === 'dashboard';
     const todayStr = getMalaysiaDateString();
     const todayMYT = mytDayStart(todayStr);
     const tomorrowMYT = new Date(todayMYT.getTime() + 24 * 60 * 60 * 1000);
@@ -53,29 +54,30 @@ module.exports = async (req, res) => {
         { $group: { _id: '$status', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { count: -1 } }
       ]),
-      Order.find().sort({ orderTimestamp: -1 }).limit(50).lean(),
+      Order.find().sort({ orderTimestamp: -1 }).limit(dashboardView ? 1 : 50)
+        .select(dashboardView ? 'fetchedAt' : 'orderNumber customerName driverName status pricing.total pricing.currency orderTimestamp orderDetails.orderType orderDetails.restaurantName deliveryTime hasErrors fetchedAt').lean(),
       Order.aggregate([
         { $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
         { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$orderTimestamp' } }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { _id: 1 } }
       ]),
-      Order.aggregate([
+      dashboardView ? [] : Order.aggregate([
         { $group: { _id: '$orderDetails.orderType', count: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { count: -1 } }
       ]),
-      Order.aggregate([
+      dashboardView ? [] : Order.aggregate([
         { $match: { 'orderDetails.restaurantName': { $ne: '', $exists: true } } },
         { $group: { _id: '$orderDetails.restaurantName', orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { orders: -1 } },
         { $limit: 5 }
       ]),
-      Order.aggregate([
+      dashboardView ? [] : Order.aggregate([
         { $match: { driverName: { $ne: 'Pending', $ne: '', $exists: true } } },
         { $group: { _id: '$driverName', orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { orders: -1 } },
         { $limit: 5 }
       ]),
-      Order.aggregate([
+      dashboardView ? [] : Order.aggregate([
         { $match: { orderTimestamp: { $gte: new Date(Date.now() - 7 * 24 * 60 * 60 * 1000) } } },
         { $group: { _id: { $hour: '$orderTimestamp' }, orders: { $sum: 1 }, revenue: { $sum: '$pricing.total' } } },
         { $sort: { _id: 1 } }
@@ -97,17 +99,19 @@ module.exports = async (req, res) => {
           month: { orders: monthStats[0]?.orders || 0, revenue: monthStats[0]?.revenue || 0 }
         },
         statusBreakdown: statusBreakdown.map(item => ({ status: item._id || 'unknown', count: item.count, revenue: item.revenue })),
-        orderTypeBreakdown: orderTypeBreakdown.map(item => ({ type: item._id || 'unknown', count: item.count, revenue: item.revenue })),
-        topRestaurants: topRestaurants.map(item => ({ name: item._id, orders: item.orders, revenue: item.revenue })),
-        topDrivers: topDrivers.map(item => ({ name: item._id, orders: item.orders, revenue: item.revenue })),
+        ...(dashboardView ? {} : {
+          orderTypeBreakdown: orderTypeBreakdown.map(item => ({ type: item._id || 'unknown', count: item.count, revenue: item.revenue })),
+          topRestaurants: topRestaurants.map(item => ({ name: item._id, orders: item.orders, revenue: item.revenue })),
+          topDrivers: topDrivers.map(item => ({ name: item._id, orders: item.orders, revenue: item.revenue })),
+          hourlyDistribution: hourlyDistribution.map(item => ({ hour: item._id, orders: item.orders, revenue: item.revenue }))
+        }),
         recentActivity: recentActivity.map(day => ({ date: day._id, orders: day.orders, revenue: day.revenue })),
-        hourlyDistribution: hourlyDistribution.map(item => ({ hour: item._id, orders: item.orders, revenue: item.revenue })),
         errors: {
           totalOrders: errorStats[0]?.totalOrders || 0,
           ordersWithErrors: errorStats[0]?.ordersWithErrors || 0,
           processedOrders: errorStats[0]?.processedOrders || 0
         },
-        recentOrders: recentOrders.map(order => ({
+        ...(dashboardView ? {} : { recentOrders: recentOrders.map(order => ({
           _id: order._id,
           orderNumber: order.orderNumber,
           customerName: order.customerName,
@@ -120,7 +124,7 @@ module.exports = async (req, res) => {
           restaurantName: order.orderDetails?.restaurantName || '',
           deliveryTime: order.deliveryTime || '',
           hasErrors: order.hasErrors || false
-        })),
+        })) }),
         lastFetchedAt: lastOrder?.fetchedAt || null
       },
       meta: { generatedAt: new Date().toISOString() }

@@ -9,9 +9,9 @@ const marketingCacheSchema = new mongoose.Schema({
   data: {
     type: mongoose.Schema.Types.Mixed
   },
+  // Completed customer markers do not expire; ordinary cached results do.
   expiresAt: {
-    type: Date,
-    required: true
+    type: Date
   },
   createdAt: {
     type: Date,
