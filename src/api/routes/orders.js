@@ -102,19 +102,20 @@ router.get('/', async (req, res) => {
     else if (sortField === 'status') { sortOptions.status = sortOrder === 'asc' ? 1 : -1; sortOptions.orderTimestamp = -1; }
     else sortOptions.orderTimestamp = sortOrder === 'asc' ? 1 : -1;
 
+    const dashboardView = req.query.view === 'dashboard';
     const [orders, total, filterOptions] = await Promise.all([
       Order.find(filter).sort(sortOptions).skip(skip).limit(limit).lean(),
       Order.countDocuments(filter),
       Promise.all([
         Order.distinct('status'),
-        Order.distinct('orderDetails.orderType'),
-        Order.aggregate([
+        dashboardView ? [] : Order.distinct('orderDetails.orderType'),
+        dashboardView ? [] : Order.aggregate([
           { $match: { 'orderDetails.restaurantName': { $ne: '', $exists: true } } },
           { $group: { _id: '$orderDetails.restaurantName' } },
           { $sort: { _id: 1 } },
           { $limit: 50 }
         ]),
-        Order.aggregate([
+        dashboardView ? [] : Order.aggregate([
           { $match: { driverName: { $ne: 'Pending', $ne: '', $exists: true } } },
           { $group: { _id: '$driverName' } },
           { $sort: { _id: 1 } },
@@ -138,9 +139,11 @@ router.get('/', async (req, res) => {
       },
       filters: {
         statuses: filterOptions[0] || [],
-        orderTypes: filterOptions[1] || [],
-        restaurants: (filterOptions[2] || []).map(r => r._id),
-        drivers: (filterOptions[3] || []).map(d => d._id)
+        ...(dashboardView ? {} : {
+          orderTypes: filterOptions[1] || [],
+          restaurants: (filterOptions[2] || []).map(r => r._id),
+          drivers: (filterOptions[3] || []).map(d => d._id)
+        })
       },
       meta: { timestamp: new Date().toISOString() }
     });

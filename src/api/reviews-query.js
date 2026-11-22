@@ -134,11 +134,18 @@ async function buildSummary(query = {}) {
   };
 }
 
-/** Page of reviews plus the summary panel. */
+/**
+ * Page of reviews plus the summary panel.
+ *
+ * `includeSummary=0` skips the panel for callers that already hold it (for
+ * example, page navigation). The summary only depends on the days window, so
+ * recomputing it per page is wasted work; the default stays unchanged.
+ */
 async function listReviews(query = {}) {
   const page = toInt(query.page, 1, 1, 100000);
   const limit = toInt(query.limit, DEFAULT_LIMIT, 1, MAX_LIMIT);
   const filter = buildFilter(query);
+  const includeSummary = query.includeSummary !== '0';
 
   // Local whitelist: the shared sanitizeSortField() allowlist is order-shaped and
   // would silently rewrite 'rating' to 'orderTimestamp'.
@@ -154,7 +161,7 @@ async function listReviews(query = {}) {
       .select('reviewID createdAt rating description customerName orderID orderedItems recommendedItems merchantReplies aspects imageUrls serviceType isNewToMerchant')
       .lean(),
     Feedback.countDocuments(filter),
-    buildSummary(query)
+    includeSummary ? buildSummary(query) : null
   ]);
 
   const totalPages = Math.max(1, Math.ceil(total / limit));
@@ -169,7 +176,7 @@ async function listReviews(query = {}) {
       hasNextPage: page < totalPages,
       hasPrevPage: page > 1
     },
-    summary
+    ...(includeSummary ? { summary } : {})
   };
 }
 
