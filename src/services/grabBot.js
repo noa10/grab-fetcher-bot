@@ -72,7 +72,12 @@ class GrabBot {
           '--disable-backgrounding-occluded-windows',
           '--disable-renderer-backgrounding'
         ],
-        defaultViewport: { width: 1366, height: 768 }
+        defaultViewport: { width: 1366, height: 768 },
+        // Puppeteer's default CDP timeout is 180s. On this box a cold Chromium
+        // start under memory pressure has taken longer than that, which surfaced
+        // as "Page.addScriptToEvaluateOnNewDocument timed out" and failed the
+        // whole run before any page existed. Give startup room to finish.
+        protocolTimeout: 300000
       };
 
       // Allow manual override for self-hosted environments
@@ -448,7 +453,23 @@ class GrabBot {
       const currentUrl = this.page.url();
       logger.puppeteer(`Current URL after login: ${currentUrl}`);
 
-      if (currentUrl.includes('login') || currentUrl.includes('challenge')) {
+      // A successful password submit usually lands on merchant.grab.com, but Grab
+      // sometimes bounces through its saved-account chooser first (seen
+      // 2026-11-25: the run typed the correct password, ended on
+      // /merchant/saved-accounts, and was reported as a credentials failure).
+      // Re-run the gate — it clicks Continue once and reports where we landed —
+      // before concluding the password was rejected.
+      let settled = !(currentUrl.includes('login') ||
+        currentUrl.includes('challenge') ||
+        currentUrl.includes('/saved-accounts'));
+
+      if (!settled) {
+        const gate = await this.advanceLoginGate(20000);
+        logger.puppeteer(`Post-password login gate: ${gate}`);
+        settled = gate === 'portal';
+      }
+
+      if (!settled) {
         logger.puppeteer('Still on login/challenge page - checking for errors...');
         const hasError = await this.page.evaluate(() => {
           const errorElements = document.querySelectorAll('[class*="error"], [class*="alert"], [class*="invalid"], [class*="message"]');

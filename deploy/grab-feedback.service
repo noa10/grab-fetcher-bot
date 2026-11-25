@@ -15,6 +15,12 @@ Description=Grab Feedback Fetcher (customer reviews, once daily)
 Documentation=https://github.com/noa10/grab-fetcher-bot
 After=network-online.target
 Wants=network-online.target
+# The daily timer gives a failed run no second chance until tomorrow, so retry a
+# transient portal failure (slow Chromium start, SPA chunk error, login bounce)
+# twice, two minutes apart. systemd stops after the burst and then fires
+# OnFailure, so a genuinely broken run still alerts instead of looping.
+StartLimitIntervalSec=30min
+StartLimitBurst=3
 
 [Service]
 Type=oneshot
@@ -39,6 +45,8 @@ Environment=BROWSER_PROFILE_DIR=/home/ubuntu/repos/grab-fetcher-bot/.browser-pro
 TimeoutStartSec=600
 TimeoutStopSec=30
 KillMode=mixed
+Restart=on-failure
+RestartSec=2min
 
 StandardOutput=journal
 StandardError=journal

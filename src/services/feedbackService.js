@@ -107,12 +107,30 @@ class FeedbackService {
     };
     this.page.on('request', onRequest);
 
+    // Poll for the captured headers instead of sleeping a fixed 6s. The SPA's own
+    // request is the only source of the token, and on a cold or busy page it can
+    // fire well after the navigation "completes" — three of the six feedback
+    // failures between 2026-11-16 and 2026-11-25 were this timeout, not a portal
+    // change.
+    const waitForCapture = async (ms) => {
+      const until = Date.now() + ms;
+      while (Date.now() < until && !captured) {
+        await sleep(500);
+      }
+      return captured;
+    };
+
     try {
+      // A warm profile can serve the page shell from the HTTP cache and skip the
+      // reviews XHR entirely; a stale JS chunk also surfaces as
+      // "Unexpected token '<'" in the page error log. Force a real fetch.
+      await this.page.setCacheEnabled(false).catch(() => {});
+
       await this.page.goto(FEEDBACK_PAGE_URL, {
-        waitUntil: 'networkidle2',
+        waitUntil: 'domcontentloaded',
         timeout: 60000
       });
-      await sleep(6000);
+      await waitForCapture(20000);
 
       // If the request was missed, fall back to clicking the sidebar item —
       // a cached SPA can skip the fetch entirely on a warm navigation.
@@ -123,13 +141,22 @@ class FeedbackService {
             .find(e => e.textContent.trim() === 'Feedback');
           item?.closest('li')?.click?.();
         });
-        await sleep(6000);
+        await waitForCapture(20000);
+      }
+
+      // Last resort: a full reload. Covers a chunk that failed to execute on the
+      // first load, which leaves the SPA mounted but never issuing its XHR.
+      if (!captured) {
+        logger.feedback('CSRF token still not seen — reloading the Feedback page once');
+        await this.page.reload({ waitUntil: 'domcontentloaded', timeout: 60000 }).catch(() => {});
+        await waitForCapture(20000);
       }
 
       if (!captured) {
         throw new Error(
-          'Could not capture x-csrf-token from the portal Feedback page. ' +
-          'The page markup or request signature may have changed.'
+          'Could not capture x-csrf-token from the portal Feedback page after a ' +
+          'direct load, a sidebar click and a reload. The page markup or request ' +
+          'signature may have changed.'
         );
       }
 
