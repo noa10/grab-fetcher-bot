@@ -6,7 +6,7 @@
  * a skeleton — looks perfectly healthy, and that is the failure mode where you find
  * out days later. This compares today against the shop's own trailing week instead.
  *
- * Runs at 14:35 UTC = 22:35 MYT, five minutes after the last trading-window poll.
+ * Runs at 14:35 UTC = 22:35 MYT, after the last trading-window poll (22:00 MYT).
  *
  * Usage:
  *   node scripts/daily-heartbeat.js            # send
@@ -115,7 +115,7 @@ function compose(d) {
   const [mytHour, mytMin] = new Date()
     .toLocaleTimeString('en-GB', { timeZone: 'Asia/Kuala_Lumpur', hour12: false })
     .split(':').map(Number);
-  const dayComplete = mytHour * 60 + mytMin >= 22 * 60 + 30;
+  const dayComplete = mytHour * 60 + mytMin >= 22 * 60 + 5;
 
   // A zero day only matters if the shop normally has volume; a genuinely quiet
   // Monday should not page anyone.
@@ -128,11 +128,11 @@ function compose(d) {
   const pollBusy = d.pollState === 'active' || d.pollState === 'activating';
   if (pollBusy && d.pollStartedEpoch) {
     const runningMin = Math.round((Date.now() - d.pollStartedEpoch * 1000) / 60000);
-    lines.push(`Last poll: in progress since ${mytTime(d.pollStartedEpoch * 1000)} MYT`);
+    lines.push(`Last run: in progress since ${mytTime(d.pollStartedEpoch * 1000)} MYT`);
     if (runningMin > 15) warnings.push(`a poll has been running for ${runningMin} min`);
   } else if (d.lastPollEpoch) {
     const ageMin = Math.round((Date.now() - d.lastPollEpoch * 1000) / 60000);
-    lines.push(`Last poll: ${mytTime(d.lastPollEpoch * 1000)} MYT (${d.lastPollResult})`);
+    lines.push(`Last run: ${mytTime(d.lastPollEpoch * 1000)} MYT (${d.lastPollResult})`);
     if (d.lastPollResult !== 'success') warnings.push(`last poll result is ${d.lastPollResult}`);
     else if (ageMin > 90) warnings.push(`last successful poll was ${ageMin} min ago`);
   } else {
@@ -153,7 +153,7 @@ function compose(d) {
   }
 
   if (!dayComplete) {
-    lines.push('_Day still in progress — the order-count check runs after 22:30 MYT._');
+    lines.push('_Day still in progress — the order-count check runs after 22:05 MYT._');
   }
 
   lines.push('');
@@ -166,6 +166,21 @@ function compose(d) {
   return lines.join('\n');
 }
 
+function sendHeartbeat(message) {
+  // Hermes currently suppresses error details as well as success output with
+  // --quiet, so capture its normal output and report failures to the journal.
+  const res = spawnSync(HERMES, ['send', '--to', TARGET], {
+    input: message, encoding: 'utf8', timeout: 60000
+  });
+  if (res.status !== 0) {
+    const detail = [res.error?.message, res.stderr?.trim(), res.stdout?.trim()]
+      .filter(Boolean).join(' | ') || 'no error details';
+    console.error(`heartbeat: hermes send failed (${res.status ?? res.signal ?? 'unknown'}): ${detail}`);
+    return false;
+  }
+  return true;
+}
+
 async function main() {
   let report;
   try {
@@ -176,8 +191,7 @@ async function main() {
     // nothing is indistinguishable from a healthy one.
     const msg = `📊 Heartbeat could not read the database: ${e.message}`;
     if (DRY_RUN) { console.log(msg); process.exit(0); }
-    const sent = spawnSync(HERMES, ['send', '--to', TARGET, '--quiet'], { input: msg, timeout: 60000 });
-    process.exit(sent.status === 0 ? 0 : 1);
+    process.exit(sendHeartbeat(msg) ? 0 : 1);
   }
 
   const message = compose(report);
@@ -187,9 +201,7 @@ async function main() {
     process.exit(0);
   }
 
-  const res = spawnSync(HERMES, ['send', '--to', TARGET, '--quiet'], { input: message, timeout: 60000 });
-  if (res.status !== 0) {
-    console.error(`heartbeat: hermes send failed (${res.status}): ${res.stderr || ''}`);
+  if (!sendHeartbeat(message)) {
     await database.disconnect().catch(() => {});
     process.exit(1);
   }

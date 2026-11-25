@@ -19,6 +19,10 @@ Documentation=https://github.com/noa10/grab-fetcher-bot
 After=network-online.target
 Wants=network-online.target
 OnFailure=grab-alert@%N.service
+# Try once and retry up to three times, five minutes apart. If all fail,
+# systemd's start limit ends the restart loop and triggers OnFailure.
+StartLimitIntervalSec=1h
+StartLimitBurst=4
 
 [Service]
 Type=oneshot
@@ -31,6 +35,8 @@ WorkingDirectory=/home/ubuntu/repos/grab-fetcher-bot
 ExecStart=/home/ubuntu/.local/bin/grab-fetcher-node scripts/daily-heartbeat.js
 
 TimeoutStartSec=180
+Restart=on-failure
+RestartSec=5min
 Nice=10
 
 StandardOutput=journal
