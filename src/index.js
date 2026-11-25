@@ -15,7 +15,10 @@ const {
 
 // Default trading windows in MYT (UTC+8): a mid-afternoon break, so the bot
 // stays off the portal between 15:00 and 17:00.
-const DEFAULT_OPERATING_HOURS = '11:00-15:00,17:00-22:30';
+const DEFAULT_OPERATING_HOURS = '11:00-15:00,17:00-22:00';
+
+// Indexed by Date#getUTCDay(): 0 = Sunday. Used for per-weekday overrides.
+const DAY_KEYS = ['SUN', 'MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT'];
 
 /**
  * Read a possibly-dotted path off a mongoose document (or plain object).
@@ -122,16 +125,36 @@ class GrabOrderFetcher {
   }
 
   /**
-   * Operating windows in MYT. Defaults to the merchant's trading hours with a
-   * mid-afternoon break, overridable via OPERATING_HOURS (comma-separated).
+   * Weekday (0 = Sunday) of the MYT calendar day containing `date`.
    *
-   *   OPERATING_HOURS=11:00-15:00,17:00-22:30
+   * The MYT day starts at 16:00 UTC the previous day, so reading the host's
+   * local weekday — or the UTC one — mislabels every instant between 16:00 and
+   * 24:00 UTC, which is the whole evening trading window. Shift first, then ask.
+   */
+  static getMytDayOfWeek(date = new Date()) {
+    return new Date(date.getTime() + 8 * 60 * 60 * 1000).getUTCDay();
+  }
+
+  /**
+   * Operating windows in MYT for the MYT weekday containing `date`.
+   *
+   * Defaults to the merchant's trading hours with a mid-afternoon break,
+   * overridable via OPERATING_HOURS (comma-separated). A single weekday can be
+   * given its own windows with OPERATING_HOURS_<DAY>, where DAY is one of
+   * MON..SUN — Friday's lunch break is shorter than the rest of the week:
+   *
+   *   OPERATING_HOURS=11:00-15:00,17:00-22:00
+   *   OPERATING_HOURS_FRI=11:00-12:30,17:00-22:00
    *
    * Outside every window pollForOrders() returns immediately, so the cron job
    * can keep a simple "every N minutes" schedule and this decides whether to act.
    */
-  static getOperatingWindows() {
-    const spec = process.env.OPERATING_HOURS || DEFAULT_OPERATING_HOURS;
+  static getOperatingWindows(date = new Date()) {
+    const dayKey = DAY_KEYS[GrabOrderFetcher.getMytDayOfWeek(date)];
+    const override = process.env[`OPERATING_HOURS_${dayKey}`];
+    const spec = (override && override.trim()) ||
+      process.env.OPERATING_HOURS ||
+      DEFAULT_OPERATING_HOURS;
     return spec
       .split(',')
       .map(s => s.trim())
@@ -144,18 +167,30 @@ class GrabOrderFetcher {
    */
   isWithinOperatingHours(date = new Date()) {
     const now = GrabOrderFetcher.getMytMinutesOfDay(date);
-    return GrabOrderFetcher.getOperatingWindows().some(
+    return GrabOrderFetcher.getOperatingWindows(date).some(
       ({ start, end }) => now >= start && now <= end
     );
   }
 
   /**
-   * Human-readable schedule for logs and the dashboard.
+   * Human-readable weekly schedule for logs and the dashboard. Per-day
+   * overrides are appended so a Friday-only change is visible in one line.
    */
   static describeSchedule() {
-    const windows = GrabOrderFetcher.getOperatingWindows();
     const fmt = m => `${String(Math.floor(m / 60)).padStart(2, '0')}:${String(m % 60).padStart(2, '0')}`;
-    return windows.map(w => `${fmt(w.start)}-${fmt(w.end)}`).join(', ');
+    const parse = spec => String(spec)
+      .split(',')
+      .map(s => s.trim())
+      .filter(Boolean)
+      .map(GrabOrderFetcher.parseWindow);
+    const render = spec => parse(spec).map(w => `${fmt(w.start)}-${fmt(w.end)}`).join(', ');
+
+    const base = render(process.env.OPERATING_HOURS || DEFAULT_OPERATING_HOURS);
+    const overrides = DAY_KEYS
+      .filter(key => (process.env[`OPERATING_HOURS_${key}`] || '').trim())
+      .map(key => `${key} ${render(process.env[`OPERATING_HOURS_${key}`])}`);
+
+    return overrides.length ? `${base} (${overrides.join('; ')})` : base;
   }
 
   /**

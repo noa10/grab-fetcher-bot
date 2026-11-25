@@ -21,7 +21,7 @@ const tests = [
       assert.strictEqual(at(15, 0), true, '15:00 is the end of the first window');
       assert.strictEqual(at(17, 0), true, '17:00 restarts');
       assert.strictEqual(at(20, 0), true);
-      assert.strictEqual(at(22, 30), true, '22:30 is the end of the last window');
+      assert.strictEqual(at(22, 0), true, '22:00 is the end of the last window');
     },
   },
   {
@@ -31,7 +31,7 @@ const tests = [
       assert.strictEqual(at(15, 1), false);
       assert.strictEqual(at(16, 0), false);
       assert.strictEqual(at(16, 59), false);
-      assert.strictEqual(at(22, 31), false);
+      assert.strictEqual(at(22, 1), false);
       assert.strictEqual(at(0, 0), false);
       assert.strictEqual(at(3, 0), false);
       assert.strictEqual(at(10, 59), false, 'just before the first window');
@@ -48,6 +48,25 @@ const tests = [
       } finally {
         if (saved === undefined) delete process.env.OPERATING_HOURS;
         else process.env.OPERATING_HOURS = saved;
+      }
+    },
+  },
+  {
+    name: 'applies the Friday override through the runner gate',
+    fn: () => {
+      const savedBase = process.env.OPERATING_HOURS;
+      const savedFri = process.env.OPERATING_HOURS_FRI;
+      process.env.OPERATING_HOURS = '11:00-15:00,17:00-22:00';
+      process.env.OPERATING_HOURS_FRI = '11:00-12:30,17:00-22:00';
+      try {
+        // 2026-10-02 is a Friday: 11:30 MYT is inside, 13:30 MYT is in the break.
+        assert.strictEqual(runner.isWithinOperatingHours(new Date(Date.UTC(2026, 9, 2, 3, 30))), true);
+        assert.strictEqual(runner.isWithinOperatingHours(new Date(Date.UTC(2026, 9, 2, 5, 30))), false);
+      } finally {
+        if (savedBase === undefined) delete process.env.OPERATING_HOURS;
+        else process.env.OPERATING_HOURS = savedBase;
+        if (savedFri === undefined) delete process.env.OPERATING_HOURS_FRI;
+        else process.env.OPERATING_HOURS_FRI = savedFri;
       }
     },
   },

@@ -305,7 +305,8 @@ ADMIN_PASSWORD=a-strong-password
 SESSION_SECRET=$(openssl rand -hex 64)
 
 <span class="c"># optional</span>
-OPERATING_HOURS=11:00-15:00,17:00-22:30
+OPERATING_HOURS=11:00-15:00,17:00-22:00
+OPERATING_HOURS_FRI=11:00-12:30,17:00-22:00
 GRAB_ALERT_TARGET=telegram</pre>
       </div>
       <div>

@@ -183,9 +183,9 @@ can be joined to orders. Coverage is partial by design: reviews go back to 2023
 while the orders collection holds only recent history.
 
 **Scheduling.** The daily job runs at **19:30 UTC = 03:30 MYT**, deliberately in
-the quiet window after the order bot's trading hours (11:05–15:00 and
-17:00–22:30 MYT) so the two never compete for the portal. Reviews trickle in
-rather than spiking, so a daily poll loses nothing.
+the quiet window after the order bot's trading hours (11:00–15:00 and
+17:00–22:00 MYT, 11:00–12:30 on Fridays) so the two never compete for the
+portal. Reviews trickle in rather than spiking, so a daily poll loses nothing.
 
 > **One-time backfill:** the default 90-day window only returns 13 reviews, so a
 > fresh install captures just recent history. Run `--all` once to pull the full
@@ -538,9 +538,9 @@ sudo apt install chromium-browser
 
 #### Schedule Details
 
-- **Operating Hours:** 11:00–15:00 and 17:00–22:30 Malaysia Time (GMT+8), daily, configured via `OPERATING_HOURS`. The bot stays completely off the Grab portal between 15:00 and 17:00, and overnight.
+- **Operating Hours:** 11:00–15:00 and 17:00–22:00 Malaysia Time (GMT+8), except Friday when the lunch break starts earlier: 11:00–12:30 and 17:00–22:00. Configured via `OPERATING_HOURS` plus an optional per-weekday `OPERATING_HOURS_<DAY>` override (`OPERATING_HOURS_FRI` here). The bot stays completely off the Grab portal outside those windows.
 - **Polling Frequency:** Every 5 minutes during the active windows (`POLLING_INTERVAL_MINUTES`)
-- **Executions per day:** ~126 runs
+- **Executions per day:** ~108 polls (78 on Fridays); the timer itself fires every 5 minutes and exits immediately outside the windows
 - **Timezone:** MYT is calculated from UTC in-code, so the server's local timezone does not matter
 
 #### Optional: Nginx Reverse Proxy
@@ -609,7 +609,7 @@ window:
 📊 Mad Krapow — Wed, 28 Oct 2026
 Orders: 6 · RM172.40
 7-day median: 6
-Last poll: 22:30 MYT (success)
+Last run: 22:00 MYT (success)
 Reviews: 125 total · 10 awaiting reply · newest 26 Oct
 
 ✅ normal day

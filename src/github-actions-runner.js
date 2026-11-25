@@ -33,7 +33,7 @@ class GitHubActionsRunner {
     // and skip constructing a fetcher (which would build a bot and browser).
     const GrabOrderFetcher = require('./index');
     const now = GrabOrderFetcher.getMytMinutesOfDay(date);
-    return GrabOrderFetcher.getOperatingWindows().some(({ start, end }) => now >= start && now <= end);
+    return GrabOrderFetcher.getOperatingWindows(date).some(({ start, end }) => now >= start && now <= end);
   }
 
   /**
@@ -406,7 +406,8 @@ async function main() {
   try {
     // Respect trading hours before doing anything, including launching a browser.
     // The systemd timer fires every 5 minutes around the clock, so this is what
-    // keeps the bot off the portal outside 11:00-15:00 and 17:00-22:30 MYT.
+    // keeps the bot off the portal outside 11:00-15:00 and 17:00-22:00 MYT
+    // (11:00-12:30 on Fridays).
     // Set FORCE_POLL=true to override (useful for a manual one-off run).
     if (!runner.isWithinOperatingHours() && process.env.FORCE_POLL !== 'true') {
       const GrabOrderFetcher = require('./index');
